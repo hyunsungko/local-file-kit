@@ -247,6 +247,17 @@ class NoToolsTests(Corpus):
         rc, d = self.run_lfk("setup", "--all", "--yes")  # the pretend profile has no winget/choco on PATH
         self.assertEqual(d["error"], "no_installer" if IS_WIN else "not_supported")
 
+    def test_text_search_without_digup_uses_words(self):
+        rc, d = self.run_lfk("search", "김치찌개", "--root", self.corpus)
+        self.assertEqual((rc, d["engine"], d["ranking"]), (0, "text", "shared words"))
+        self.assertTrue(d["results"][0]["path"].endswith("김치찌개.txt"))
+        self.assertIn("note", d)  # says DigUp is missing, so no meaning ranking
+        rc, d = self.run_lfk("search", "hotel receipts submitted", "--root", self.corpus)
+        self.assertTrue(d["results"][0]["path"].endswith("travel policy.pdf"), d["results"][:2])
+        self.assertGreaterEqual(d["files_without_text"], 1)  # the scan-only PDF (and the empty file)
+        rc, d = self.run_lfk("search", "김치", "--engine", "text")
+        self.assertEqual((rc, d["error"]), (2, "need_root"))
+
     def test_options_before_command(self):
         out = os.path.join(self.tmp, "앞 옵션.json")
         rc, d = self.run_lfk("--out", out, "find", "김치", "--root", self.corpus)
@@ -272,6 +283,30 @@ class NoToolsTests(Corpus):
         rc, d = self.run_lfk("find", "김치", "--root", self.corpus, "--out", out)
         with open(out, encoding="utf-8") as f:
             self.assertEqual(json.load(f)["count"], 1)
+
+
+class PdfTextTests(Corpus):
+    def test_simple_pdf(self):
+        from lfkit import textread
+        text = textread.read_text(self.p("Work Docs", "travel policy.pdf"))
+        self.assertIn("Economy class for flights under six hours.", text)
+
+    def test_scan_pdf_has_no_text(self):
+        from lfkit import textread
+        self.assertEqual(textread.read_text(self.p("스캔", "영수증 스캔.pdf")), "")
+
+    def test_browser_made_korean_pdf(self):
+        import pdfmaker
+        from lfkit import textread
+        out = os.path.join(self.tmp, "한글 안내문.pdf")
+        paras = ["보증금 반환이 늦어질 때는 법원에 임차권등기명령을 신청한다.",
+                 "두 번째 문단은 English words와 숫자 123을 함께 담는다."]
+        if not pdfmaker.make_pdf(paras, out):
+            self.skipTest("no Edge/Chrome to print a test PDF")
+        text = textread.read_text(out)
+        self.assertIn("임차권등기명령을 신청한다", text)
+        self.assertIn("English words", text)
+        self.assertEqual(len(text.split("\n\n")), 2)  # two paragraphs, as in the page
 
 
 @unittest.skipUnless(IS_WIN or (sys.platform.startswith("linux") and shutil.which("gio")),
@@ -372,6 +407,24 @@ class DigUpTests(Corpus):
         rc, d = lfk("search", "찌개 끓이는 법", "--index", idx, "--zgate", "0", "--no-excerpt", "--passages", "1")
         self.assertNotIn("excerpt", d["results"][0])
         self.assertNotIn("text", d["results"][0]["passages"][0])
+
+    def test_text_first_search_with_model(self):
+        env = dict(os.environ, LFK_DATA=os.path.join(self.tmp, "text cache"))
+        rc, d = lfk("search", "찌개 끓이는 법", "--root", self.corpus, "-n", "3", "--passages", "1", env=env)
+        self.assertEqual((rc, d["ranking"]), (0, "meaning (EmbeddingGemma 2)"), d)
+        self.assertTrue(d["results"][0]["path"].endswith("김치찌개.txt"))
+        self.assertGreater(d["files_read_now"], 0)
+        rc, d = lfk("search", "항공권 좌석 등급 규정", "--root", self.corpus, "-n", "1", env=env)
+        self.assertTrue(d["results"][0]["path"].endswith("travel policy.pdf"), d["results"])  # Korean -> English PDF
+        self.assertEqual(d["files_read_now"], 0)  # everything came from the cache
+        rc, d = lfk("search", "x", "--root", self.corpus, "--estimate", env=env)
+        self.assertEqual(d["estimate"]["files_to_read"], 0)
+
+    def test_index_media_only_leaves_documents_out(self):
+        idx = os.path.join(self.tmp, "digup index media")
+        rc, d = lfk("index", self.corpus, "--index", idx, "--estimate", "--media-only")
+        self.assertEqual(rc, 0, d)
+        self.assertNotIn("doc", d["estimate"]["files"])
 
 
 if __name__ == "__main__":

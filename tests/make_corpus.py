@@ -63,6 +63,31 @@ def pdf(path, lines):
     Path(path).write_bytes(out)
 
 
+def scan_pdf(path):
+    """A one-page PDF holding only a picture (like a scan): no text to read."""
+    pixels = bytes((x * 32 + y * 4) % 256 for y in range(16) for x in range(16))
+    objs = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /XObject << /Im1 5 0 R >> >> >>",
+    ]
+    content = "q 400 0 0 400 100 300 cm /Im1 Do Q"
+    out = b"%PDF-1.4\n"
+    offsets = []
+    bodies = [o.encode() for o in objs]
+    bodies.append(f"<< /Length {len(content)} >>\nstream\n{content}\nendstream".encode())
+    bodies.append(b"<< /Type /XObject /Subtype /Image /Width 16 /Height 16 /ColorSpace /DeviceGray "
+                  b"/BitsPerComponent 8 /Length 256 >>\nstream\n" + pixels + b"\nendstream")
+    for i, b in enumerate(bodies, 1):
+        offsets.append(len(out))
+        out += f"{i} 0 obj\n".encode() + b + b"\nendobj\n"
+    xref = len(out)
+    out += f"xref\n0 {len(bodies) + 1}\n0000000000 65535 f \n".encode()
+    out += "".join(f"{o:010d} 00000 n \n" for o in offsets).encode()
+    out += f"trailer\n<< /Size {len(bodies) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
+    Path(path).write_bytes(out)
+
+
 def _scene(kind, size=(320, 240)):
     from PIL import Image, ImageDraw
     w, h = size
@@ -131,6 +156,8 @@ def build(root):
         p.write_text(DUP_TEXT, encoding="utf-8")
     (root / "빈 폴더" / "안쪽 빈 폴더").mkdir(parents=True)
     (root / "Work Docs" / "empty.txt").write_bytes(b"")
+    (root / "스캔").mkdir()
+    scan_pdf(root / "스캔" / "영수증 스캔.pdf")
     with open(root / "Work Docs" / "big_backup.bin", "wb") as f:
         f.truncate(6 * 1024 * 1024)
     made = images(root)

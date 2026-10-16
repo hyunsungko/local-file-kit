@@ -7,7 +7,7 @@
 
 ### 1.1 GitHub Actions (저장소를 올릴 때마다 새 가상 PC에서)
 
-[워크플로](../.github/workflows/test.yml)가 매번 아래를 돌립니다. 단위 시험은 `python -m unittest discover -s tests -v`(27개)입니다.
+[워크플로](../.github/workflows/test.yml)가 매번 아래를 돌립니다. 단위 시험은 `python -m unittest discover -s tests -v`(33개)입니다.
 
 | 작업 | 환경 | 하는 일 |
 |---|---|---|
@@ -15,16 +15,16 @@
 | windows-tools | 같은 러너 + ExifTool·Czkawka·Everything 설치 | `doctor`, 단위 시험, Program Files에서 용량·찾기·중복 속도 |
 | windows-setup-winget | 같은 러너(winget·Chocolatey 둘 다 있음) | `setup`으로 Everything·Czkawka·ExifTool을 winget으로 실제 설치하고 `doctor`가 찾는지 확인 |
 | windows-setup-choco | 같은 러너, `LFK_INSTALLER=choco` | `setup`으로 Everything·ExifTool을 Chocolatey로 실제 설치하고 확인 |
-| windows-digup | 같은 러너 + DigUp 0.7.0-beta.1 조용히 설치(`/S`) + `digup download-model`, **그래픽 카드 없음** | 단위 시험(DigUp 색인·찾기·문단 고르기 포함), 한국어 성능 시험, 문서 300개 색인 속도 |
+| windows-digup | 같은 러너 + DigUp 0.7.0-beta.1 조용히 설치(`/S`) + `digup download-model`, **그래픽 카드 없음** | 단위 시험(DigUp 색인·찾기·문단 고르기, 글자 먼저 찾기 포함), 한국어 성능 시험(DigUp 색인과 글자 먼저 둘 다), 문서 300개를 두 방식으로 처리한 시간 |
 | linux | Ubuntu 러너, Python 3.12, ExifTool·7-Zip·Czkawka 설치 | `doctor`, 단위 시험 |
 | macos | macOS 러너(Apple Silicon), Python 3.13, 도구 없음 | `doctor`, 단위 시험 (파이썬 기능만. 휴지통 되돌리기 시험은 맥에서 건너뜀) |
 | plugin-manifest | Ubuntu 러너 | `claude plugin validate . --strict` |
 
-단위 시험 내용: 도구 없이 이름 찾기·용량·중복·빈 폴더·.zip 압축, 복사 미리보기와 덮어쓰지 않기, 정리 계획→이동→되돌리기,
+단위 시험 내용: PDF 글자 읽기(간단한 PDF, 브라우저로 만든 한글 PDF, 글자 없는 스캔 PDF), 글자 먼저 찾기(모델 없이 낱말로, 모델로 뜻으로, 캐시 다시 쓰기), 도구 없이 이름 찾기·용량·중복·빈 폴더·.zip 압축, 복사 미리보기와 덮어쓰지 않기, 정리 계획→이동→되돌리기,
 이름 충돌(건너뛰기·이름 바꾸기·대소문자만 다른 이름), 보호 폴더 거절(`\\?\` 경로 포함), 압축 이름·위치 검사와 압축 밖으로 나가는 항목,
 `setup`이 확인 없이 설치하지 않는지, 잘못된 인자의 JSON 오류, `--ascii`·`--out`, 휴지통 보내기→되돌리기(복원),
 도구가 있을 때 Czkawka와 파이썬 결과 비교, 비슷한 사진, ExifTool 한글 파일 이름, 7-Zip 왕복, WizTree와 파이썬 합계 비교,
-Everything 찾기, DigUp 색인→찾기→문단 고르기→발췌 숨기기.
+Everything 찾기, DigUp 색인→찾기→문단 고르기→발췌 숨기기, `index --media-only`.
 
 ### 1.2 도구를 숨긴 가짜 사용자 환경 (`tests/mockenv.py`)
 
@@ -85,7 +85,8 @@ DigUp 모델이 없을 때 `doctor`가 `download-model` 명령을 알려 주고 
 - GitHub Actions runs on every push, on fresh machines: Windows (Python 3.9 and 3.13; nothing installed / ExifTool,
   Czkawka and Everything installed / `setup` really installing tools with Chocolatey and with winget / DigUp silently
   installed with its model and no GPU, plus the Korean search evaluation), Ubuntu with tools, macOS without tools, and
-  `claude plugin validate --strict`. 27 unit tests.
+  `claude plugin validate --strict`. 33 unit tests, including PDF text reading (also a browser-made Korean PDF) and
+  text-first search.
 - A pretend user profile (user folder `김 철수` with a space, PATH cut down, registry lookups off) checks every Python
   fallback, exit code 3 with install advice for missing tools, tools found from a Korean/space path, and
   `model_missing` when DigUp has no model.

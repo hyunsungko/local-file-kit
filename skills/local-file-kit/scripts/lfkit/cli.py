@@ -82,21 +82,33 @@ def build_parser():
     s.add_argument("--engine", choices=["auto", "everything", "walk"], default="auto")
     s.add_argument("--max-seconds", type=int, default=120, help="time limit for a folder walk")
 
-    s = cmd("search", "find files by what they say or show (DigUp index; meaning, not exact words)")
+    s = cmd("search", "find files by what they say: with --root, reads the text of the files there (no index); "
+            "without, asks the DigUp index (also pictures, scans)")
     s.add_argument("query")
-    s.add_argument("--kind", help="screenshot,image,pdf,doc,audio,video")
-    s.add_argument("--root", action="append", metavar="DIR", help="only results inside this folder (repeatable)")
+    s.add_argument("--root", action="append", metavar="DIR",
+                   help="search inside this folder (repeatable); reads text directly unless --engine digup")
+    s.add_argument("--engine", choices=["auto", "text", "digup"], default="auto",
+                   help="auto: text when --root is given, otherwise the DigUp index")
+    s.add_argument("--estimate", action="store_true", help="text search: only count files and estimate the time")
+    s.add_argument("--max-seconds", type=int, default=300, help="text search: time limit for reading new files")
+    s.add_argument("--max-files", type=int, default=20000, help="text search: at most this many files")
+    s.add_argument("--no-cache", action="store_true", help="text search: do not store paragraph vectors")
+    s.add_argument("--words", action="store_true", help="text search: rank by shared words, skip the model")
+    s.add_argument("--kind", help="DigUp index: screenshot,image,pdf,doc,audio,video")
     s.add_argument("--limit", "-n", type=int, default=10)
     s.add_argument("--passages", type=int, default=0, metavar="K",
                    help="also return the K best paragraphs inside each text-like result (EmbeddingGemma 2)")
     s.add_argument("--no-excerpt", action="store_true", help="leave text excerpts out of the output (privacy)")
-    s.add_argument("--zgate", type=float, help="how much a match must stand out (DigUp default 2.0; 0 shows all)")
+    s.add_argument("--zgate", type=float, help="DigUp index: how much a match must stand out (default 2.0; 0 shows all)")
     s.add_argument("--index", metavar="DIR", help="a separate DigUp index folder (default: the DigUp app's index)")
     s.add_argument("--cpu", action="store_true", help="run the model on the CPU (DIGUP_DEVICE=cpu)")
 
-    s = cmd("index", "add folders to the DigUp index (or --estimate how long that takes)")
+    s = cmd("index", "add folders to the DigUp index (or --estimate how long that takes); best for pictures and scans")
     s.add_argument("folders", nargs="+")
     s.add_argument("--estimate", action="store_true", help="only estimate files and time; index nothing")
+    s.add_argument("--media-only", action="store_true",
+                   help="leave out text documents (searched as text with search --root): pictures, PDFs, audio, video")
+    s.add_argument("--no-pdf", action="store_true", help="with --media-only, also leave out PDFs")
     s.add_argument("--index", metavar="DIR", help="a separate DigUp index folder")
     s.add_argument("--exclude", action="append", metavar="DIR")
     s.add_argument("--limit", type=int, help="index at most N new files this run")

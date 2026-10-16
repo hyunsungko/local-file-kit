@@ -3,6 +3,18 @@
 All notable changes. Versions follow [Semantic Versioning](https://semver.org/); the version lives in
 `.claude-plugin/plugin.json` and `skills/local-file-kit/scripts/lfkit/__init__.py` (keep them equal).
 
+## 0.2.0
+
+- Text first: `search "..." --root DIR` reads the text of the files in a folder (txt, md, docx, hwpx, pptx, xlsx, odt,
+  html, rtf and PDFs) without any index and ranks paragraphs by meaning with EmbeddingGemma 2 through `digup worker`,
+  or by shared words when DigUp is missing. Paragraph vectors are cached per file (numbers only), so later searches
+  read only changed files. `--estimate` shows the files and the expected time first; `--max-seconds` bounds a run.
+- PDF text reading in plain Python (Flate streams, object streams, ToUnicode maps for Korean and other scripts,
+  form XObjects). Scanned PDFs are reported as having no text.
+- `index --media-only` (and `--no-pdf`) leaves text documents out of the DigUp index, which is meant for photos,
+  screenshots, scans, audio and video.
+- `--passages` now also works for PDFs in DigUp index results.
+
 ## 0.1.0
 
 First release.

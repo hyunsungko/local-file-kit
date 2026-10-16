@@ -10,8 +10,9 @@
 | 하고 싶은 일 | 명령 | 쓰는 도구 | 도구가 없으면 |
 |---|---|---|---|
 | 이름 일부로 파일 찾기 | `find` | Everything (es.exe) | 지정한 폴더를 파이썬으로 훑음(느림) |
-| 내용·뜻으로 문서·사진 찾기 (한국어·영어) | `search`, `index`, `status` | DigUp + EmbeddingGemma 2 | 쓸 수 없음(설치 안내) |
-| 찾은 파일 안에서 맞는 문단 고르기 | `search --passages 3` | EmbeddingGemma 2 (DigUp 안의 모델) | 쓸 수 없음 |
+| 폴더 안 문서를 내용·뜻으로 찾기 (한국어·영어) | `search --root 폴더` | 파일 글자를 바로 읽음 + EmbeddingGemma 2 (DigUp 안의 모델), 색인 없음 | 같은 낱말로 찾음 |
+| 사진·스크린샷·스캔 PDF를 뜻으로 찾기 | `index --media-only`, `search` | DigUp 색인 | 쓸 수 없음(설치 안내) |
+| 찾은 파일 안에서 맞는 문단 고르기 | `search --passages 3` | EmbeddingGemma 2 | 같은 낱말로 고름 |
 | 디스크를 무엇이 차지하나 | `size` | WizTree | 파이썬으로 훑음 |
 | 똑같은 파일 | `dupes` | Czkawka CLI | 파이썬으로 비교 |
 | 비슷한 사진 | `similar` | Czkawka CLI | 쓸 수 없음 |
@@ -25,6 +26,15 @@
 | 빠진 도구 한 번에 설치 (목록을 보고 확인한 뒤) | `setup` | winget / Chocolatey | 맥·리눅스는 명령 안내 |
 
 Claude에게는 평소 말로 시키면 됩니다. 예: "작년에 받은 계약서 어디 있지?", "D 드라이브 뭐가 제일 큰지 봐 줘", "사진 폴더 중복 정리해 줘", "다운로드 폴더 종류별로 정리해 줘".
+
+## 내용 찾기는 글자 먼저
+
+글자를 뽑을 수 있는 파일은 색인 없이 글자부터 읽습니다. DigUp 색인은 글자가 없는 것(사진·스크린샷·스캔 PDF·소리·영상)에 씁니다.
+
+- **이유**: DigUp 색인은 폴더의 모든 파일을 미리 처리합니다. PDF는 쪽마다 그림으로 바꿔 그림 모델을 거치므로, 큰 폴더는 첫 색인이 몇 시간에서 하루 넘게 걸리고 그래픽 카드도 오래 씁니다. 반면 글자로 된 문서는 글자만 읽어 문장 모델(EmbeddingGemma 2)에 넣으면 되어 훨씬 가볍습니다.
+- **글자 먼저 찾기** (`search "..." --root 폴더`): txt·md·docx·hwpx·pptx·xlsx·odt·html·rtf와 프로그램으로 만든 PDF에서 글자를 바로 읽어 문단을 뜻으로 비교합니다. 처음 찾을 때 읽은 결과(숫자만, 글자는 저장 안 함)를 남겨 두므로 다음 찾기부터는 바뀐 파일만 읽습니다. 큰 폴더는 `--estimate`로 걸릴 시간을 먼저 봅니다.
+- **DigUp 색인** (`index 폴더 --media-only`): 문서 글자는 빼고 사진·PDF·소리·영상만 색인합니다. 역시 `--estimate`로 시간을 먼저 봅니다.
+- 옛 한글 파일(HWP)·DOC·XLS·PPT와 스캔 PDF는 글자로 읽지 못합니다. HWPX·DOCX로 저장하면 읽습니다.
 
 ## 안전장치
 
@@ -122,6 +132,13 @@ one JSON command line, `lfk.py`, in front of free tools you may already have —
 EmbeddingGemma 2 (contents and meaning, Korean and English), WizTree (disk usage), Czkawka (duplicates, look-alike
 photos, empty folders), ExifTool (photo metadata), 7-Zip (archives) and robocopy (copies) — and falls back to plain
 Python, or tells you what to install, when one is missing.
+
+**Text first.** `search "..." --root DIR` reads the text of txt, md, docx, hwpx, pptx, xlsx, odt, html, rtf and
+program-made PDFs directly and ranks paragraphs by meaning with EmbeddingGemma 2 (the model inside DigUp), with no
+index; paragraph vectors (numbers, not text) are cached so later searches only read changed files. DigUp's index,
+which renders PDF pages and photos through its image model and is much heavier, is meant for what has no text:
+photos, screenshots, scanned PDFs, audio and video (`index DIR --media-only`). Without DigUp, text search ranks by
+shared words. Old binary HWP/DOC/XLS/PPT and scanned PDFs cannot be read as text.
 
 **Install the skill**
 

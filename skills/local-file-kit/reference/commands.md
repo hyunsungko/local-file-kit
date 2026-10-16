@@ -36,14 +36,26 @@ Without `--root` the whole Everything index is searched; without Everything, `--
 Output: `engine, count, results[{path,name,is_dir,size,modified}]`, `truncated`, `notes[]`, `walked_entries`.
 
 ## search QUERY
-Options: `--kind screenshot,image,pdf,doc,audio,video`, `--root DIR` (filter), `-n/--limit 10`, `--passages K`,
-`--no-excerpt`, `--zgate Z` (0 = show all ranked), `--index DIR` (separate index), `--cpu`.
-Output: `results[{path, kind, z, cosine, segment, loc, size, modified, excerpt, passages[{rank,cosine,index,text}],
-passages_total, passages_skipped}]`, `hint` when empty.
-`loc` is the page (PDF) or chunk (document) where the best match is.
+Two engines. `--engine auto` (default) uses **text** when `--root` is given and the **DigUp index** otherwise.
+
+Text first (`--root DIR`, repeatable): walks the folder, reads the text of txt, md, docx, hwpx, pptx, xlsx, odt, html,
+rtf and program-made PDFs, splits it into paragraphs and ranks them by meaning with EmbeddingGemma 2 (`digup worker`;
+no index), or by shared words when DigUp is missing (`--words` forces that). Paragraph vectors are cached per file in
+`text-vectors.sqlite` in the data folder (numbers only, not the text), so a second search only reads changed files.
+Options: `-n/--limit 10`, `--passages K`, `--no-excerpt`, `--estimate` (counts and expected seconds, searches nothing),
+`--max-seconds 300` (time for reading new files; what was read is kept), `--max-files 20000`, `--no-cache`, `--cpu`.
+Output: `ranking, files_with_text, files_read_now, files_from_cache, files_without_text, pictures_audio_video,
+not_readable_as_text, cloud_only_skipped, incomplete, results[{path, kind: text, score, loc, size, modified, excerpt,
+passages[{rank, score, index, text}]}]` plus `hint_*` sentences.
+
+DigUp index (no `--root`, or `--engine digup`): `--kind screenshot,image,pdf,doc,audio,video`, `--root DIR` (filter),
+`--zgate Z` (0 = show all ranked), `--index DIR` (separate index), `--passages K`, `--no-excerpt`, `--cpu`.
+Output: `results[{path, kind, z, cosine, segment, loc, size, modified, excerpt, passages[...], passages_total,
+passages_skipped}]`, `hint` when empty. `loc` is the page (PDF) or chunk (document) where the best match is.
 
 ## index FOLDER...
-`--estimate` (no indexing; returns files per kind, `seconds`, `minutes`, `calibrated`), `--index DIR`,
+`--estimate` (no indexing; returns files per kind, `seconds`, `minutes`, `calibrated`), `--media-only` (leave out
+txt, md, rtf, docx, odt, html: search those as text), `--no-pdf` (with `--media-only`), `--index DIR`,
 `--exclude DIR`, `--limit N`, `--cpu`, `--force`, `--timeout`.
 Output: `sync` (new/changed/removed counts), `done`, `skipped_files`, `failed[]`.
 

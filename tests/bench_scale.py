@@ -52,8 +52,17 @@ def bench_docs(a):
         rc, so, se = run([digup, "index", docs, "--index", idx], timeout=7200, env=env)
         secs = time.perf_counter() - t
         size = os.path.getsize(os.path.join(idx, "index.sqlite"))
-        out["runs"].append({"device": "cpu" if cpu else "auto", "ok": rc == 0, "seconds": round(secs, 1),
-                            "files_per_minute": round(a.count / secs * 60), "index_mb": round(size / 1e6, 1)})
+        run_info = {"device": "cpu" if cpu else "auto", "ok": rc == 0, "seconds": round(secs, 1),
+                    "files_per_minute": round(a.count / secs * 60), "index_mb": round(size / 1e6, 1)}
+        # text first: the same files read as text by search --root (no DigUp index); first run fills the cache
+        tenv = dict(env, LFK_DATA=os.path.join(a.work, "lfk-data-" + run_info["device"]))
+        first, d1 = lfk_time("search", "보증금 돌려받기", "--root", docs, "--engine", "text", "--max-seconds", "7200",
+                             env=tenv)
+        again, d2 = lfk_time("search", "보증금 돌려받기", "--root", docs, "--engine", "text", env=tenv)
+        run_info["text_first_search_seconds"] = first
+        run_info["text_next_search_seconds"] = again
+        run_info["text_cache_mb"] = round(os.path.getsize(os.path.join(tenv["LFK_DATA"], "text-vectors.sqlite")) / 1e6, 1)
+        out["runs"].append(run_info)
     print(json.dumps(out, ensure_ascii=False, indent=1))
 
 

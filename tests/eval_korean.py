@@ -11,6 +11,7 @@ import json
 import os
 import re
 import statistics
+import subprocess
 import sys
 import time
 
@@ -71,6 +72,34 @@ def lexical_rank(q, expected):
     return None
 
 
+LFK = os.path.join(HERE, "..", "skills", "local-file-kit", "scripts", "lfk.py")
+
+
+def text_first(docs, work, tag, env):
+    """The same questions through search --root (files read as text, no DigUp index)."""
+    tenv = dict(env, LFK_DATA=os.path.join(work, "lfk-data-" + tag))
+    per_group, misses, times = {}, [], []
+    first = None
+    for group, q, expected in QUERIES:
+        t = time.perf_counter()
+        p = subprocess.run([sys.executable, LFK, "search", q, "--root", docs, "--engine", "text", "-n", "10",
+                            "--no-excerpt"], capture_output=True, env=tenv)
+        secs = time.perf_counter() - t
+        if first is None:
+            first = secs
+        else:
+            times.append(secs)
+        d = json.loads(p.stdout.decode("utf-8"))
+        names = [os.path.basename(r["path"]) for r in d.get("results", [])]
+        rank = names.index(expected) + 1 if expected in names else None
+        per_group.setdefault(group, []).append(rank)
+        if rank != 1:
+            misses.append({"query": q, "expected": expected, "rank": rank, "top": names[0] if names else None})
+    return {"first_search_seconds": round(first, 2), "search_seconds_median": round(statistics.median(times), 3),
+            "groups": {g: metrics(r) for g, r in per_group.items()},
+            "overall": metrics([r for rs in per_group.values() for r in rs]), "misses": misses}
+
+
 def run_device(digup, work, device_cpu):
     env = dict(os.environ)
     tag = "cpu" if device_cpu else "auto"
@@ -100,6 +129,7 @@ def run_device(digup, work, device_cpu):
                                                / len(r), 3)}
                      for g, r in per_group.items()}
     out["overall"] = metrics([d["rank"] for d in detail])
+    out["text_first"] = text_first(docs, work, tag, env)
     out["queries"] = detail
 
     # passages: which paragraph inside a file answers the question
@@ -153,6 +183,7 @@ def main():
                              "embed_paragraphs_per_second": r["embed_paragraphs_per_second"],
                              "misses": [{k: q[k] for k in ("query", "expected", "rank", "top")}
                                         for q in r["queries"] if q["rank"] != 1],
+                             "text_first": r["text_first"],
                              "passage_misses": [p["query"] for p in r["passages"]["detail"] if not p["correct"]]}
                for r in result["runs"]}
     print(json.dumps(summary, ensure_ascii=False, indent=1))

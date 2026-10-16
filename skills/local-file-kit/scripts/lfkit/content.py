@@ -17,6 +17,7 @@ from .util import IS_MAC, IS_WIN, LfkError, abspath, iso_time, run
 NEEDED = ("search", "index", "status", "estimate", "worker")
 MODEL_FILES = ("embeddinggemma-2-Q8_0.gguf", "mmproj-embeddinggemma-2-Q8_0.gguf")
 KINDS = ("screenshot", "image", "pdf", "doc", "audio", "video")
+TEXT_DOC_EXTS = "txt,md,markdown,rtf,docx,odt,html,htm"  # what official DigUp reads as documents
 
 
 def query_prompt(text):
@@ -97,8 +98,25 @@ def _index_args(args):
 
 
 def cmd_search(args):
-    digup = tools.require("digup")
     roots = [os.path.realpath(abspath(r)) for r in (args.root or [])]  # long names, as the tools report them
+    engine = args.engine
+    if engine == "auto":
+        engine = "text" if roots else "digup"
+    if engine == "text":
+        from . import textsearch
+        if not roots:
+            raise LfkError("need_root", "text search reads the files of a folder: give --root DIR "
+                           "(without --root, search uses the DigUp index)", exit_code=2)
+        for r in roots:
+            if not os.path.isdir(r):
+                raise LfkError("not_found", f"not a folder: {r}", exit_code=2)
+        if args.estimate:
+            return textsearch.cmd_estimate_text(args, roots)
+        return textsearch.cmd_search_text(args, roots)
+    if args.estimate:
+        raise LfkError("bad_argument", "--estimate is for text search (--root); for the DigUp index use "
+                       "index DIR --estimate", exit_code=2)
+    digup = tools.require("digup")
     n = args.limit * (5 if roots else 1)
     cmd = [digup, "search", *args.query.split(), "--json", "-n", str(n)] + _index_args(args)
     if args.kind:
@@ -225,7 +243,7 @@ def _add_passages(digup, args, results, max_per_file=200):
             continue
         ext = os.path.splitext(path)[1].lower()
         if ext not in textread.READABLE:
-            r["passages_skipped"] = f"{ext or 'this kind of file'} is not read here (DigUp's own excerpt is the best spot)"
+            r["passages_skipped"] = f"{ext or 'this kind of file'} has no text to read here (DigUp's excerpt is the best spot)"
             continue
         try:
             text = textread.read_text(path)
@@ -234,7 +252,7 @@ def _add_passages(digup, args, results, max_per_file=200):
             continue
         parts = textread.passages(text or "")[:max_per_file]
         if not parts:
-            r["passages_skipped"] = "no text"
+            r["passages_skipped"] = "no text inside (a scan or picture-only file)"
             continue
         todo.append((r, parts))
     if not todo:
@@ -262,6 +280,10 @@ def cmd_index(args):
     extra = []
     for d in args.exclude or []:
         extra += ["--exclude", abspath(d)]
+    if args.media_only:  # text documents are cheaper to search as text (search --root); index the rest
+        extra += ["--exclude-ext", TEXT_DOC_EXTS + (",pdf" if args.no_pdf else "")]
+    elif args.no_pdf:
+        raise LfkError("bad_argument", "--no-pdf goes with --media-only", exit_code=2)
     if args.estimate:
         rc, out, err = run([digup, "estimate", *folders, "--json"] + _index_args(args) + extra, timeout=3600, env=_env(args))
         if rc != 0:

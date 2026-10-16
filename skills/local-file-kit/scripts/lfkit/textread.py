@@ -1,14 +1,18 @@
-"""Plain text out of common document files, standard library only (for picking passages inside a file)."""
+"""Plain text out of common document files, standard library only (searching text first, picking passages)."""
 import html
 import os
 import re
 import zipfile
 
+from . import pdftext
+
 TEXT_EXTS = {".txt", ".md", ".markdown", ".csv", ".tsv", ".log", ".json", ".xml", ".yaml", ".yml", ".ini", ".rst",
              ".html", ".htm", ".rtf", ".tex", ".srt", ".vtt"}
 ZIP_EXTS = {".docx", ".pptx", ".xlsx", ".odt", ".odp", ".hwpx"}
-READABLE = TEXT_EXTS | ZIP_EXTS
+PDF_EXTS = {".pdf"}
+READABLE = TEXT_EXTS | ZIP_EXTS | PDF_EXTS
 MAX_BYTES = 8 * 1024 * 1024
+MAX_PDF_BYTES = 64 * 1024 * 1024
 
 
 def _decode(data):
@@ -63,8 +67,14 @@ def read_text(path):
     ext = os.path.splitext(path)[1].lower()
     if ext not in READABLE:
         return None
-    if os.path.getsize(path) > MAX_BYTES:
+    if os.path.getsize(path) > (MAX_PDF_BYTES if ext in PDF_EXTS else MAX_BYTES):
         return None
+    if ext in PDF_EXTS:
+        try:
+            with open(path, "rb") as f:
+                return pdftext.extract(f.read())
+        except (pdftext.PdfError, OSError, ValueError, IndexError):
+            return None
     if ext in ZIP_EXTS:
         try:
             return _zip_text(path, ext)
