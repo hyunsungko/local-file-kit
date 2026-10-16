@@ -1,0 +1,13 @@
+{
+  "name": "local-file-kit",
+  "version": "0.1.0",
+  "description": "Find and organize files on your PC from Claude: by name (Everything), by meaning in Korean and English (DigUp + EmbeddingGemma 2), disk usage (WizTree), duplicates and look-alike photos (Czkawka), photo metadata (ExifTool), archives (7-Zip), copies (robocopy), and previewed, undoable moves and Recycle Bin deletes.",
+  "author": {
+    "name": "hyunsungko",
+    "url": "https://github.com/hyunsungko"
+  },
+  "homepage": "https://github.com/hyunsungko/local-file-kit",
+  "repository": "https://github.com/hyunsungko/local-file-kit",
+  "license": "MIT",
+  "keywords": ["files", "search", "organize", "duplicates", "everything", "digup", "embeddinggemma", "korean", "windows"]
+}

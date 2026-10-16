@@ -1,0 +1,167 @@
+name: test
+
+# Fresh virtual machines that have never seen this project: install, run doctor, run the tests.
+# Windows: once with nothing extra installed, once with the free tools, once with DigUp and its model.
+# WizTree is not installed here: its licence is free for personal use only.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows-clean:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        python: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: doctor (nothing installed by us; the image already has 7-Zip)
+        run: python skills/local-file-kit/scripts/lfk.py doctor --pretty
+      - name: tests
+        run: python -m unittest discover -s tests -v
+
+  windows-tools:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: install ExifTool, Czkawka CLI, Pillow
+        shell: pwsh
+        run: |
+          choco install exiftool -y --no-progress
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\czkawka" | Out-Null
+          Invoke-WebRequest "https://github.com/qarmin/czkawka/releases/download/12.0.1/windows_czkawka_cli.exe" -OutFile "$env:RUNNER_TEMP\czkawka\windows_czkawka_cli.exe"
+          "$env:RUNNER_TEMP\czkawka" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+          python -m pip install pillow
+      - name: install Everything (best effort)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          choco install everything es -y --no-progress
+          Start-Process "C:\Program Files\Everything\Everything.exe" -ArgumentList "-startup"
+          Start-Sleep 15
+      - name: doctor
+        run: python skills/local-file-kit/scripts/lfk.py doctor --pretty
+      - name: tests
+        run: python -m unittest discover -s tests -v
+      - name: speed of size, find and dupes on the runner's Program Files (numbers only)
+        run: python tests/bench_scale.py walk "C:\Program Files"
+
+  windows-setup-choco:
+    # `setup` on a fresh runner: GitHub's Windows image has Chocolatey but no winget
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: setup installs Everything and ExifTool with Chocolatey
+        run: python tests/ci_setup_check.py everything,exiftool
+
+  windows-setup-winget:
+    runs-on: windows-latest
+    continue-on-error: true   # installing winget itself on a server image is the uncertain part
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: install winget (Microsoft.WinGet.Client)
+        shell: pwsh
+        run: |
+          Install-PackageProvider -Name NuGet -Force | Out-Null
+          Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery | Out-Null
+          Repair-WinGetPackageManager -AllUsers -Latest
+          winget --version
+      - name: setup installs Everything, Czkawka and ExifTool with winget
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:LOCALAPPDATA\Microsoft\WindowsApps;$env:PATH"
+          python tests/ci_setup_check.py everything,czkawka,exiftool
+
+  windows-digup:
+    runs-on: windows-latest
+    continue-on-error: true   # DigUp is a pre-release; its silent install is not documented
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: install DigUp 0.7.0-beta.1 and its model
+        shell: pwsh
+        run: |
+          Invoke-WebRequest "https://github.com/ARahim3/DigUp/releases/download/v0.7.0-beta.1/DigUp_0.7.0-beta.1_x64-setup.exe" -OutFile "$env:RUNNER_TEMP\digup-setup.exe"
+          Start-Process "$env:RUNNER_TEMP\digup-setup.exe" -ArgumentList "/S" -Wait
+          Get-Process DigUp -ErrorAction SilentlyContinue | Stop-Process -Force
+          & "$env:LOCALAPPDATA\DigUp\helper\digup.exe" download-model
+      - name: doctor
+        run: python skills/local-file-kit/scripts/lfk.py doctor --pretty
+      - name: tests with DigUp (CPU only; the runner has no GPU)
+        env:
+          LFK_TEST_DIGUP: "1"
+          DIGUP_DEVICE: cpu
+        run: |
+          python -m pip install pillow
+          python -m unittest discover -s tests -v
+      - name: Korean search quality on made-up documents
+        env:
+          DIGUP_DEVICE: cpu
+        run: python tests/eval_korean.py "${{ runner.temp }}\ko-eval" --json "${{ runner.temp }}\korean-eval.json"
+      - name: indexing speed, 300 made-up Korean text files (CPU)
+        env:
+          DIGUP_DEVICE: cpu
+        run: python tests/bench_scale.py docs "${{ runner.temp }}\bench-docs" --count 300
+      - uses: actions/upload-artifact@v4
+        with:
+          name: korean-eval
+          path: ${{ runner.temp }}\korean-eval.json
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: install ExifTool, 7-Zip, Czkawka CLI, Pillow
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q libimage-exiftool-perl 7zip
+          mkdir -p "$HOME/bin"
+          curl -sSL -o "$HOME/bin/czkawka_cli" https://github.com/qarmin/czkawka/releases/download/12.0.1/linux_czkawka_cli_x86_64
+          chmod +x "$HOME/bin/czkawka_cli"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          python -m pip install pillow
+      - name: doctor
+        run: python skills/local-file-kit/scripts/lfk.py doctor --pretty
+      - name: tests
+        run: python -m unittest discover -s tests -v
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: doctor
+        run: python skills/local-file-kit/scripts/lfk.py doctor --pretty
+      - name: tests (Python fallbacks only)
+        run: python -m unittest discover -s tests -v
+
+  plugin-manifest:
+    runs-on: ubuntu-latest
+    continue-on-error: true   # not checked whether `claude plugin validate` needs a login
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npx -y @anthropic-ai/claude-code@2.1.301 plugin validate . --strict

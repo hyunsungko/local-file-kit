@@ -1,0 +1,18 @@
+{
+  "name": "local-file-kit",
+  "owner": {
+    "name": "hyunsungko",
+    "url": "https://github.com/hyunsungko"
+  },
+  "metadata": {
+    "description": "local-file-kit: find and organize files on your own computer."
+  },
+  "plugins": [
+    {
+      "name": "local-file-kit",
+      "source": "./",
+      "description": "Find files by name or meaning, see disk usage, clean duplicates, and tidy folders with preview and undo.",
+      "category": "productivity"
+    }
+  ]
+}

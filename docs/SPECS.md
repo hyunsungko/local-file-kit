@@ -1,0 +1,122 @@
+# 사양과 한계 / Requirements and limits
+
+[English summary](#english-summary)
+
+## 1. 한눈에 보기
+
+| 항목 | 최소 | 권장 | 비고 |
+|---|---|---|---|
+| 운영체제 | Windows 10/11 64비트 | Windows 11 64비트 | GitHub Actions 윈도 러너에서 시험. Windows 10은 시험하지 못함 |
+| 파이썬 | 3.9 | 3.11 이상 | 표준 라이브러리만 씀. GitHub Actions에서 3.9·3.12·3.13 시험 |
+| CPU | x64 2코어 | 4코어 이상 | 이름 찾기·정리는 가벼움. 내용 찾기 색인은 CPU만 쓰면 느림 |
+| 메모리 | 4GB (내용 찾기 없이) / 8GB (DigUp 사용) | 16GB 이상 | DigUp은 모델(865MB)을 메모리에 올림 |
+| 그래픽 카드 | 없어도 됨 | Vulkan을 지원하고 그래픽 메모리가 1.5GB 이상 비어 있는 카드 | DigUp은 GPU가 더 빠를 때만 씀. 찾는 결과는 같음 |
+| 디스크 | 스킬 1MB 미만 | SSD | DigUp 앱 약 200MB + 모델 865MB + 색인 |
+
+내용 찾기(DigUp)를 빼면 거의 모든 PC에서 돕니다. 이름 찾기(Everything)와 용량(WizTree)은 윈도 전용이고, 없으면 파이썬이 폴더를 직접 훑습니다.
+
+## 2. 기능별로 필요한 것
+
+| 기능 | 필요한 것 | 없을 때 |
+|---|---|---|
+| `find` | Everything 실행 중 + es.exe | `--root` 폴더를 파이썬으로 훑음. 드라이브 전체는 수십 초 이상 |
+| `search`·`index`·`status` | DigUp 앱 + 모델(865MB) | 쓸 수 없음. `doctor`가 설치 방법을 알려 줌 |
+| `search --passages` | 위와 같음 | 쓸 수 없음 |
+| `size` | WizTree | 파이썬으로 훑음 |
+| `dupes`·`empty` | Czkawka CLI | 파이썬 (결과는 같고 느림) |
+| `similar` | Czkawka CLI | 쓸 수 없음 |
+| `exif` | ExifTool | 쓸 수 없음 |
+| `archive` | 7-Zip | .zip만 파이썬으로 |
+| `copy` | robocopy(윈도 기본) | 파이썬 shutil |
+| `plan`·`move`·`trash`·`undo` | 없음 | — |
+
+## 3. 실측 (GitHub Actions 러너)
+
+모든 숫자는 GitHub Actions의 `windows-latest` 러너(Windows Server 2025, 가상 CPU 4개, 메모리 16GB, **그래픽 카드 없음**)에서 측정했습니다.
+자료는 이 저장소의 생성기로 만든 가짜 자료입니다. 측정은 [워크플로](../.github/workflows/test.yml)가 매번 다시 합니다.
+
+| 작업 | 결과 |
+|---|---|
+| DigUp 색인, 가짜 문서 42개 (CPU) | 15.5초 (프로그램과 모델 시작 포함) |
+| DigUp 찾기 1번 | 약 1.3초 (매번 프로그램을 새로 띄움) |
+| `--passages`의 문단 숫자 바꾸기 (CPU) | 초당 약 9문단 |
+
+- 그래픽 카드가 있으면 색인이 빨라집니다. 얼마나 빨라지는지는 카드, 비어 있는 그래픽 메모리, 자료 종류(문서·사진·스크린샷·PDF)에 따라 다릅니다.
+- 첫 색인 시간은 `index 폴더 --estimate`로 미리 볼 수 있습니다.
+
+## 4. 한국어 성능 (EmbeddingGemma 2, DigUp 0.7.0-beta.1 공식판)
+
+가짜 한국어 문서 36개와 영어 문서 6개를 만들고, 질문 62개로 맞는 문서가 몇 위에 나오는지 측정했습니다.
+비슷한 주제를 일부러 섞었습니다(전세·월세, 고양이·강아지, 노트북·휴대전화, 적금·주식 배당 등).
+자료와 질문은 [tests/korean_eval_data.py](../tests/korean_eval_data.py)에 있고, 실행은 `python tests/eval_korean.py <빈 폴더>`입니다.
+질문별 결과는 Actions 실행의 `korean-eval` 결과 파일로 남습니다. 아래 숫자는 그래픽 카드 없는 Actions 러너의 값입니다.
+
+| 질문 종류 | 개수 | 1위 정답 | 3위 안 | MRR | 기본 설정에서 보임 | 단어 일치만으로 1위 |
+|---|---|---|---|---|---|---|
+| 한국어, 문서와 다른 낱말로 바꿔 말함 | 36 | 97.2% | 100% | 0.986 | 97.2% | 55.6% |
+| 한국어, 문서의 핵심 낱말 그대로 | 8 | 100% | 100% | 1.000 | 100% | 100% |
+| 한국어 구어체·띄어쓰기 없음·줄임말 | 6 | 83.3% | 83.3% | 0.857 | 83.3% | 16.7% |
+| 한국어 질문 → 영어 문서 | 6 | 100% | 100% | 1.000 | 100% | 0% |
+| 영어 질문 → 한국어 문서 | 6 | 100% | 100% | 1.000 | 100% | 0% |
+| **전체** | **62** | **96.8%** | **98.4%** | **0.978** | | |
+
+- 파일 안에서 맞는 문단 고르기(`--passages`): 12개 중 11개(91.7%).
+- "기본 설정에서 보임"은 DigUp이 약한 결과를 숨기는 문턱(z 2.0)을 넘은 비율입니다. 정답이 1위가 아니면 숨는 경우가 많습니다.
+- "단어 일치만으로 1위"는 질문 낱말이 문서에 들어 있는 수로 순위를 매긴 비교 기준입니다. 바꿔 말한 질문과 언어가 다른 질문에서 뜻 찾기의 이점이 큽니다.
+- 그래픽 카드가 있어도 결과는 같고 속도만 다릅니다.
+
+한계
+- 문서 42개짜리 작은 색인입니다. 수십만 개를 색인하면 비슷한 문서가 많아져 순위가 떨어질 수 있습니다.
+- 질문과 문서를 같은 사람이 만들었습니다. 실제 사용자의 말투와 다를 수 있습니다.
+- 한국어 PDF, 스캔 문서, HWP는 이 시험에 넣지 않았습니다. 공식판 DigUp은 HWP·엑셀을 읽지 않습니다.
+- 줄임말·비속어에는 약합니다. 정식 낱말로 다시 찾으면 됩니다.
+
+## 5. 그래픽 카드가 없거나 작을 때
+
+- **찾는 결과는 같습니다.** 위 한국어 시험은 그래픽 카드 없이 돌린 값입니다.
+- **색인이 느려집니다.** 사진·스크린샷·스캔 PDF가 많으면 첫 색인이 몇 시간에서 하루 이상 걸릴 수 있으니 `--estimate`로 먼저 확인합니다.
+- **찾기는 거의 같습니다.** DigUp이 질의를 CPU로 바꾸기 때문입니다.
+- 다른 GPU 프로그램(음성·영상 생성, 게임 등)과 함께 돌려 그래픽 메모리가 모자라면 DigUp이 공유 메모리를 써서 크게 느려질 수 있습니다. 그래픽 메모리가 풀려도 **DigUp 앱을 다시 켜야** 빨라집니다. `doctor`는 그래픽 메모리 여유가 1.5GB 아래면 알려 줍니다(NVIDIA 카드에서만 사용량을 읽을 수 있음).
+- CPU만 쓰게 하려면 `--cpu`(= `DIGUP_DEVICE=cpu`).
+
+## 6. 도구별 한계
+
+| 도구 | 한계 |
+|---|---|
+| Everything | 로컬 NTFS·ReFS 드라이브만 자동 색인. 네트워크·FAT·exFAT·USB·클라우드 드라이브(구글 드라이브 등)는 Everything 설정의 '폴더'에 따로 넣어야 함. 이 스킬은 Everything이 모르는 폴더를 알아채면 파이썬으로 훑음. Everything이 켜져 있어야 함. 파일 내용은 모름 |
+| DigUp | 색인한 폴더만 찾음. 파일마다 가장 맞는 곳 하나만 냄(그래서 `--passages`를 더함). 긴 PDF의 정확한 쪽, 긴 영상의 정확한 시각은 약함. 경로 260자 이상은 읽지 못함. 클라우드 전용 파일(내려받지 않은 OneDrive 파일 등)·연결 지점은 건너뜀. 공식판이 읽는 문서: txt·md·rtf·docx·odt·html·PDF(그림·소리·영상 별도). HWP·엑셀은 읽지 않음. helper CLI는 공개 문서가 없는 내부 도구라 판이 바뀌면 명령이 바뀔 수 있음(`doctor`가 필요한 명령이 있는지 확인). 색인 DB에 글 발췌가 저장됨(PC 밖으로 나가지 않음) |
+| WizTree | 개인 사용만 무료, 업무용은 별도 라이선스. 관리자 없이 부르므로 빠른 MFT 읽기는 쓰지 않음. 파이썬이 읽지 못하는 시스템 폴더까지 세므로 합계가 파이썬 훑기보다 클 수 있음 |
+| Czkawka | 비슷한 사진의 기본 설정(Gradient, 16, 5)은 엄격해서 밝기만 바꾼 사진도 못 찾을 수 있음 → `--hash-alg Mean --hash-size 8 --max-difference 10`. 동영상 비교는 ffmpeg가 필요해 이 스킬에 넣지 않음. 윈도는 x64만. 하드 링크는 중복으로 세지 않음(파이썬 대체도 같음) |
+| ExifTool | 한글·공백 파일 이름은 UTF-8 인자 파일로 넘겨 해결(시험함) |
+| 7-Zip | 압축 풀 때 있는 파일은 건너뜀. 암호 압축은 다루지 않음 |
+| robocopy | 미리보기 목록의 상태 낱말이 윈도 언어에 따라 바뀌어 크기와 경로만 읽음. 오류 줄은 영어·한국어 문구만 알아봄 |
+| 휴지통 | 휴지통이 없는 드라이브(네트워크·USB)는 거절. 휴지통보다 큰 파일은 윈도가 확인 창을 띄움. 윈도 경로 260자 이상은 휴지통 API가 실패할 수 있음(시험 안 함) |
+
+## 7. macOS·리눅스
+
+| 기능 | 리눅스 | macOS |
+|---|---|---|
+| `find`, `size`, `copy` | 파이썬으로 동작, GitHub Actions Ubuntu에서 시험 통과 | 파이썬으로 동작, GitHub Actions macOS에서 시험 통과 |
+| `dupes`, `empty` | 파이썬 동작. Czkawka를 깔면 그것을 씀(Actions에서 시험 통과) | 파이썬 동작, 시험 통과. Czkawka 사용은 시험 못 함 |
+| `similar`, `exif`, `archive`(7z) | 도구를 깔면 동작(`apt install libimage-exiftool-perl 7zip`), Actions에서 시험 통과 | 시험 못 함 |
+| `trash`, `undo` | `gio trash`로 홈 휴지통에 보내고 되돌리기까지 동작 | Finder 휴지통으로 보냄(시험 못 함). 되돌리기는 Finder에서 직접 |
+| `search`, `index` | DigUp 리눅스판(x64 .deb·AppImage)이 있으나 **이 스킬과 함께 시험 못 함** | DigUp 맥판(Apple Silicon, macOS 14+)이 있으나 **시험 못 함** |
+| Everything, WizTree, robocopy | 없음(윈도 전용) | 없음 |
+
+---
+
+## English summary
+
+- **Runs on** Windows 10/11 x64 (tested on GitHub Actions Windows runners; not on Windows 10), Python 3.9+, no extra
+  packages. Meaning search needs DigUp (about 200 MB app + 865 MB model); 8 GB of RAM is recommended. A Vulkan GPU
+  with 1.5 GB of free memory speeds up indexing but does not change results.
+- **Measured** on a GitHub Actions `windows-latest` runner (4 vCPUs, 16 GB, no GPU): DigUp indexed 42 made-up
+  documents in 15.5 s, a search takes about 1.3 s, and `--passages` embeds about 9 paragraphs a second on the CPU.
+- **Korean quality** (42 made-up documents, 62 queries, same runner): the right file is first for 96.8% of queries and
+  in the top 3 for 98.4% (MRR 0.978); paraphrased Korean 97.2%, slang/no-spacing 83.3%, Korean↔English 100%. Picking
+  the right paragraph inside a file: 11 of 12. Small index, self-written queries, no Korean PDFs/HWP: treat as an
+  indication, not a guarantee.
+- **Limits**: Everything indexes local NTFS/ReFS only; DigUp returns one spot per file, skips paths over 260 characters
+  and cloud-only files, and its official build does not read HWP or Excel; WizTree is free for personal use only.
+- **macOS/Linux**: Python features tested on GitHub Actions Ubuntu and macOS; macOS Trash, macOS tools and DigUp on
+  macOS/Linux not tested.
