@@ -26,6 +26,9 @@ def main():
     wanted = sys.argv[1].split(",")
     rc, preview = lfk("setup")
     assert rc == 0 and preview["mode"] in ("preview", "nothing to do"), preview
+    forced = os.environ.get("LFK_INSTALLER")
+    if forced and preview.get("installer") != forced:
+        raise SystemExit(f"expected installer {forced}, got {preview.get('installer')}")
     rc, done = lfk("setup", "--tools", ",".join(wanted), "--yes")
     rc, doc = lfk("doctor")
     missing = [t for t in wanted if not doc["tools"][t]["found"]]

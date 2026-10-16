@@ -129,6 +129,7 @@ def run_device(digup, work, device_cpu):
 
 
 def main():
+    sys.stdout.reconfigure(encoding="utf-8")  # CI consoles (cp1252) cannot print Korean otherwise
     ap = argparse.ArgumentParser()
     ap.add_argument("work")
     ap.add_argument("--cpu", action="store_true", help="also run everything with DIGUP_DEVICE=cpu")

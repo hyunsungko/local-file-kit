@@ -54,8 +54,21 @@ jobs:
       - name: speed of size, find and dupes on the runner's Program Files (numbers only)
         run: python tests/bench_scale.py walk "C:\Program Files"
 
+  windows-setup-winget:
+    # `setup` for real on a fresh runner (the image has winget and Chocolatey)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: winget --version
+      - name: setup installs Everything, Czkawka and ExifTool with winget
+        env:
+          LFK_INSTALLER: winget
+        run: python tests/ci_setup_check.py everything,czkawka,exiftool
+
   windows-setup-choco:
-    # `setup` on a fresh runner: GitHub's Windows image has Chocolatey but no winget
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -63,28 +76,9 @@ jobs:
         with:
           python-version: "3.13"
       - name: setup installs Everything and ExifTool with Chocolatey
+        env:
+          LFK_INSTALLER: choco
         run: python tests/ci_setup_check.py everything,exiftool
-
-  windows-setup-winget:
-    runs-on: windows-latest
-    continue-on-error: true   # installing winget itself on a server image is the uncertain part
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-      - name: install winget (Microsoft.WinGet.Client)
-        shell: pwsh
-        run: |
-          Install-PackageProvider -Name NuGet -Force | Out-Null
-          Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery | Out-Null
-          Repair-WinGetPackageManager -AllUsers -Latest
-          winget --version
-      - name: setup installs Everything, Czkawka and ExifTool with winget
-        shell: pwsh
-        run: |
-          $env:PATH = "$env:LOCALAPPDATA\Microsoft\WindowsApps;$env:PATH"
-          python tests/ci_setup_check.py everything,czkawka,exiftool
 
   windows-digup:
     runs-on: windows-latest

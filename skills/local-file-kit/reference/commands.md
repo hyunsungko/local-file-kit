@@ -22,7 +22,8 @@ Without `--yes` it only lists: `installer` (winget, choco or null), `missing[{to
 how (winget|choco|manual), commands[], note}]`, `mode: preview`. With `--yes` and `--all` (every missing tool except
 WizTree) or `--tools a,b` it runs the commands, starts Everything if it was just installed, looks again and returns
 `results[{tool, status (installed|already installed|manual|failed...), exit_codes, found, path}]`.
-Windows only (winget, else Chocolatey, which needs an administrator console). DigUp is always `manual`.
+Windows only (winget, else Chocolatey, which needs an administrator console; `LFK_INSTALLER=winget|choco` picks one).
+DigUp is always `manual`.
 On macOS/Linux it lists the brew/apt commands; `--yes` is refused (`not_supported`). No installer: `no_installer`.
 
 ## find QUERY

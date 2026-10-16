@@ -22,10 +22,11 @@ EXPLICIT_ONLY = {"wiztree"}
 
 
 def _installer():
-    """('winget'|'choco', path) on Windows, or (None, None)."""
+    """('winget'|'choco', path) on Windows, or (None, None). LFK_INSTALLER=winget|choco picks one."""
     if not IS_WIN:
         return None, None
-    for name in ("winget", "choco"):
+    forced = os.environ.get("LFK_INSTALLER", "").lower()
+    for name in ([forced] if forced in ("winget", "choco") else ["winget", "choco"]):
         path = shutil.which(name)
         if path:
             return name, path

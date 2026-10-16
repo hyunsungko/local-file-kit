@@ -13,8 +13,8 @@
 |---|---|---|
 | windows-clean | 윈도 러너, Python 3.9·3.13, 추가 설치 없음 | `doctor`, 단위 시험 (도구 시험은 러너에 원래 있는 7-Zip만 실행) |
 | windows-tools | 같은 러너 + ExifTool·Czkawka·Everything 설치 | `doctor`, 단위 시험, Program Files에서 용량·찾기·중복 속도 |
-| windows-setup-choco | 같은 러너(winget 없음, Chocolatey 있음) | `setup`으로 Everything·ExifTool을 실제 설치하고 `doctor`가 찾는지 확인 |
-| windows-setup-winget | 같은 러너 + winget 설치 | `setup`으로 Everything·Czkawka·ExifTool을 winget으로 실제 설치하고 확인 |
+| windows-setup-winget | 같은 러너(winget·Chocolatey 둘 다 있음) | `setup`으로 Everything·Czkawka·ExifTool을 winget으로 실제 설치하고 `doctor`가 찾는지 확인 |
+| windows-setup-choco | 같은 러너, `LFK_INSTALLER=choco` | `setup`으로 Everything·ExifTool을 Chocolatey로 실제 설치하고 확인 |
 | windows-digup | 같은 러너 + DigUp 0.7.0-beta.1 조용히 설치(`/S`) + `digup download-model`, **그래픽 카드 없음** | 단위 시험(DigUp 색인·찾기·문단 고르기 포함), 한국어 성능 시험, 문서 300개 색인 속도 |
 | linux | Ubuntu 러너, Python 3.12, ExifTool·7-Zip·Czkawka 설치 | `doctor`, 단위 시험 |
 | macos | macOS 러너(Apple Silicon), Python 3.13, 도구 없음 | `doctor`, 단위 시험 (파이썬 기능만. 휴지통 되돌리기 시험은 맥에서 건너뜀) |

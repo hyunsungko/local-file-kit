@@ -87,6 +87,7 @@ def bench_walk(a):
 
 
 def main():
+    sys.stdout.reconfigure(encoding="utf-8")  # CI consoles (cp1252) cannot print Korean otherwise
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("docs")
