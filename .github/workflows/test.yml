@@ -108,10 +108,10 @@ jobs:
         env:
           DIGUP_DEVICE: cpu
         run: python tests/eval_korean.py "${{ runner.temp }}\ko-eval" --json "${{ runner.temp }}\korean-eval.json"
-      - name: indexing speed, 300 made-up Korean text files (CPU)
+      - name: DigUp index vs text first, 300 Korean notes and 100 PDFs (CPU)
         env:
           DIGUP_DEVICE: cpu
-        run: python tests/bench_scale.py docs "${{ runner.temp }}\bench-docs" --count 300
+        run: python tests/bench_scale.py docs "${{ runner.temp }}\bench-docs" --count 300 --pdfs 100
       - uses: actions/upload-artifact@v4
         with:
           name: korean-eval
@@ -127,7 +127,7 @@ jobs:
       - name: install ExifTool, 7-Zip, Czkawka CLI, Pillow
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q libimage-exiftool-perl 7zip
+          sudo apt-get install -y -q libimage-exiftool-perl 7zip fonts-noto-cjk
           mkdir -p "$HOME/bin"
           curl -sSL -o "$HOME/bin/czkawka_cli" https://github.com/qarmin/czkawka/releases/download/12.0.1/linux_czkawka_cli_x86_64
           chmod +x "$HOME/bin/czkawka_cli"

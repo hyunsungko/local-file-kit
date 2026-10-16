@@ -29,6 +29,17 @@ def browser():
     return None
 
 
+KOREAN_FONT_HINTS = ("CJK", "Gothic", "Nanum", "Malgun", "Gulim", "Dotum", "Batang", "Hei", "Myeongjo", "Apple SD")
+
+
+def has_korean_font(pdf_path):
+    """Did the browser embed a font that has Korean letters? (Without one it prints empty boxes.)"""
+    import re
+    with open(pdf_path, "rb") as f:
+        names = re.findall(rb"/BaseFont\s*/([^\s/<>\[\]]+)", f.read())
+    return any(h.encode() in n for n in names for h in KOREAN_FONT_HINTS)
+
+
 def make_pdf(paragraphs, out_path, title="sample"):
     exe = browser()
     if not exe:

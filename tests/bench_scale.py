@@ -1,7 +1,8 @@
 """Speed checks behind docs/SPECS.md. Prints numbers only, never file names.
 
-  python tests/bench_scale.py docs <empty work folder> [--count 1000] [--cpu]
-      make <count> made-up Korean text files (1-3 KB) and time DigUp indexing them into a separate index
+  python tests/bench_scale.py docs <empty work folder> [--count 1000] [--pdfs 100] [--cpu]
+      make <count> made-up Korean text files (1-3 KB) and <pdfs> 3-page PDFs; time DigUp indexing them into a
+      separate index, and the first and second text-first search (search --root) on the same files
   python tests/bench_scale.py walk <folder>
       time size/find/dupes with and without the outside tools on a real folder (counts and seconds only)
 """
@@ -38,31 +39,71 @@ def make_docs(folder, count, seed=1):
     return total
 
 
+def make_pdfs(folder, count, pages=3, seed=2):
+    """Simple program-made PDFs (Helvetica, English text), `pages` pages each."""
+    rnd = random.Random(seed)
+    paras = [p for name, ps in DOCS.items() if name.isascii() for p in ps]
+    os.makedirs(folder, exist_ok=True)
+    for n in range(count):
+        objs = ["<< /Type /Catalog /Pages 2 0 R >>", None, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
+        kids = []
+        for _ in range(pages):
+            lines = []
+            for p in rnd.sample(paras, 4):
+                lines += [p[i:i + 80] for i in range(0, len(p), 80)] + [""]
+            text = "BT /F1 11 Tf 60 760 Td 14 TL " + " ".join(
+                "(%s) Tj T*" % l.replace("\\", "").replace("(", "").replace(")", "") for l in lines) + " ET"
+            objs.append(f"<< /Length {len(text)} >>\nstream\n{text}\nendstream")
+            objs.append(f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents {len(objs)} 0 R "
+                        "/Resources << /Font << /F1 3 0 R >> >> >>")
+            kids.append(f"{len(objs)} 0 R")
+        objs[1] = f"<< /Type /Pages /Kids [{' '.join(kids)}] /Count {pages} >>"
+        out, offsets = b"%PDF-1.4\n", []
+        for i, o in enumerate(objs, 1):
+            offsets.append(len(out))
+            out += f"{i} 0 obj\n{o}\nendobj\n".encode("latin-1")
+        xref = len(out)
+        out += f"xref\n0 {len(objs) + 1}\n0000000000 65535 f \n".encode()
+        out += "".join(f"{o:010d} 00000 n \n" for o in offsets).encode()
+        out += f"trailer\n<< /Size {len(objs) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
+        with open(os.path.join(folder, f"report {n:04d}.pdf"), "wb") as f:
+            f.write(out)
+
+
+def compare(digup, folder, work, label, env, count):
+    """DigUp index vs. text-first first search on the same folder."""
+    idx = os.path.join(work, "idx-" + label)
+    t = time.perf_counter()
+    rc, so, se = run([digup, "index", folder, "--index", idx], timeout=7200, env=env)
+    secs = time.perf_counter() - t
+    size = os.path.getsize(os.path.join(idx, "index.sqlite"))
+    tenv = dict(env, LFK_DATA=os.path.join(work, "lfk-data-" + label))
+    first, _ = lfk_time("search", "deposit refund", "--root", folder, "--engine", "text", "--max-seconds", "7200",
+                        env=tenv)
+    again, _ = lfk_time("search", "deposit refund", "--root", folder, "--engine", "text", env=tenv)
+    return {"files": count, "digup_index_seconds": round(secs, 1), "digup_index_ok": rc == 0,
+            "digup_index_mb": round(size / 1e6, 1), "text_first_search_seconds": first,
+            "text_next_search_seconds": again,
+            "text_cache_mb": round(os.path.getsize(os.path.join(tenv["LFK_DATA"], "text-vectors.sqlite")) / 1e6, 1)}
+
+
 def bench_docs(a):
+    """Korean text notes, and program-made PDFs: DigUp index time vs. text-first first search, per device."""
     digup = tools.require("digup")
     docs = os.path.join(a.work, "docs")
+    pdfs = os.path.join(a.work, "pdfs")
     total = make_docs(docs, a.count)
-    out = {"files": a.count, "mb": round(total / 1e6, 2), "runs": []}
+    make_pdfs(pdfs, a.pdfs)
+    out = {"text_files": a.count, "text_mb": round(total / 1e6, 2), "pdf_files": a.pdfs, "pdf_pages": a.pdfs * 3,
+           "runs": []}
     for cpu in ([False, True] if a.cpu else [False]):
         env = dict(os.environ)
         if cpu:
             env["DIGUP_DEVICE"] = "cpu"
-        idx = os.path.join(a.work, "idx-cpu" if cpu else "idx-auto")
-        t = time.perf_counter()
-        rc, so, se = run([digup, "index", docs, "--index", idx], timeout=7200, env=env)
-        secs = time.perf_counter() - t
-        size = os.path.getsize(os.path.join(idx, "index.sqlite"))
-        run_info = {"device": "cpu" if cpu else "auto", "ok": rc == 0, "seconds": round(secs, 1),
-                    "files_per_minute": round(a.count / secs * 60), "index_mb": round(size / 1e6, 1)}
-        # text first: the same files read as text by search --root (no DigUp index); first run fills the cache
-        tenv = dict(env, LFK_DATA=os.path.join(a.work, "lfk-data-" + run_info["device"]))
-        first, d1 = lfk_time("search", "보증금 돌려받기", "--root", docs, "--engine", "text", "--max-seconds", "7200",
-                             env=tenv)
-        again, d2 = lfk_time("search", "보증금 돌려받기", "--root", docs, "--engine", "text", env=tenv)
-        run_info["text_first_search_seconds"] = first
-        run_info["text_next_search_seconds"] = again
-        run_info["text_cache_mb"] = round(os.path.getsize(os.path.join(tenv["LFK_DATA"], "text-vectors.sqlite")) / 1e6, 1)
-        out["runs"].append(run_info)
+        tag = "cpu" if cpu else "auto"
+        out["runs"].append({"device": tag,
+                            "text_notes": compare(digup, docs, a.work, "docs-" + tag, env, a.count),
+                            "pdfs": compare(digup, pdfs, a.work, "pdfs-" + tag, env, a.pdfs)})
     print(json.dumps(out, ensure_ascii=False, indent=1))
 
 
@@ -101,7 +142,8 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("docs")
     s.add_argument("work")
-    s.add_argument("--count", type=int, default=1000)
+    s.add_argument("--count", type=int, default=1000, help="Korean text notes")
+    s.add_argument("--pdfs", type=int, default=100, help="3-page PDFs")
     s.add_argument("--cpu", action="store_true")
     s = sub.add_parser("walk")
     s.add_argument("folder")

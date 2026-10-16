@@ -304,6 +304,8 @@ class PdfTextTests(Corpus):
         if not pdfmaker.make_pdf(paras, out):
             self.skipTest("no Edge/Chrome to print a test PDF")
         text = textread.read_text(out)
+        if not any("가" <= c <= "힣" for c in text) and not pdfmaker.has_korean_font(out):
+            self.skipTest("the browser had no Korean font, so the PDF holds empty boxes instead of Korean")
         self.assertIn("임차권등기명령을 신청한다", text)
         self.assertIn("English words", text)
         self.assertEqual(len(text.split("\n\n")), 2)  # two paragraphs, as in the page

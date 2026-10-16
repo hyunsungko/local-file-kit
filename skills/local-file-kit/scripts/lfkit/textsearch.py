@@ -121,24 +121,35 @@ class Cache:
         self.db.close()
 
 
-LAYOUT = "file+paragraphs v1"  # what a cached row holds; changing it invalidates the cache
+CHUNK_CHARS = 1200
+LAYOUT = f"chunks{CHUNK_CHARS} v2"  # what a cached row holds; changing it invalidates the cache
 
 
 def _model_id(info):
     return f"{info.get('model')}@{info.get('revision')}|{info.get('dtype')}|{info.get('dim')}|{LAYOUT}"
 
 
+def _chunks(parts, max_chars=CHUNK_CHARS):
+    """Paragraphs packed into pieces of up to ~1,200 characters: a short note is one piece, a long one a few.
+    Fewer, larger pieces keep the first read of a folder about as cheap as DigUp's own text chunks."""
+    chunks, cur = [], ""
+    for p in parts:
+        if cur and len(cur) + 1 + len(p) > max_chars:
+            chunks.append(cur)
+            cur = p
+        else:
+            cur = cur + "\n" + p if cur else p
+    if cur:
+        chunks.append(cur)
+    return chunks
+
+
 def _embed_file(emb, path, parts):
-    """[vector of the whole file (first 2,000 characters), vector of each paragraph...], or [] when no text.
-    The whole-file vector catches questions about what a short note is about as a whole."""
+    """One vector per piece of the file (see _chunks), or [] when it has no text."""
     if not parts:
         return []
     title = os.path.basename(path)
-    texts = [content.document_prompt(title, p) for p in parts]
-    if len(parts) > 1:
-        texts.insert(0, content.document_prompt(title, "\n".join(parts)[:2000]))
-    vecs = [_unit(v) for v in emb.embed(texts)]
-    return vecs if len(parts) > 1 else vecs * 2
+    return [_unit(v) for v in emb.embed([content.document_prompt(title, c) for c in _chunks(parts)])]
 
 
 def _unit(v):
@@ -191,97 +202,114 @@ def cmd_search_text(args, roots):
     if truncated:
         out["truncated"] = f"stopped listing at {args.max_files} files; narrow --root or raise --max-files"
 
-    scored = []          # (score, path, size, mtime, passage index)
-    read_now = cached = no_text = 0
-    incomplete = 0
+    counts = {"read_now": 0, "cached": 0, "no_text": 0, "incomplete": 0}
+    results = None
+    emb = None
     if digup:
         try:
             emb = content.Embedder(digup, env=content._env(args))
         except LfkError as e:
             if e.code != "tool_failed":
                 raise
-            emb = None
             note = "DigUp's model could not start (run doctor): ranked by shared words, not meaning"
-        if emb:
-            info = emb.info
-            model_id = _model_id(info)
-            cache = None if args.no_cache else Cache(model_id)
-            try:
-                q = _unit(emb.embed([content.query_prompt(args.query)])[0])
-                for path, size, mtime in files:
-                    vecs = cache.get(path, size, mtime) if cache else None
-                    if vecs is None:
-                        if time.monotonic() - start > budget:
-                            incomplete += 1
-                            continue
-                        parts = _passages(path)
-                        if parts is None:
-                            continue
-                        vecs = _embed_file(emb, path, parts)
-                        if cache:
-                            cache.put(path, size, mtime, vecs)
-                        read_now += 1
-                    else:
-                        cached += 1
-                    if not vecs:
-                        no_text += 1
+    if emb:
+        cache = None if args.no_cache else Cache(_model_id(emb.info))
+        try:
+            q = _unit(emb.embed([content.query_prompt(args.query)])[0])
+            scored = []
+            for path, size, mtime in files:
+                vecs = cache.get(path, size, mtime) if cache else None
+                if vecs is None:
+                    if time.monotonic() - start > budget:
+                        counts["incomplete"] += 1
                         continue
-                    # vecs[0] is the whole file (its start), the rest are its paragraphs
-                    per = [(_dot(q, v), i) for i, v in enumerate(vecs[1:])]
-                    scored.append((max(_dot(q, vecs[0]), max(per)[0]), path, size, mtime, per))
-                out["ranking"] = "meaning (EmbeddingGemma 2)"
-            finally:
-                emb.close()
-                if cache:
-                    cache.close()
-    if not scored and not out.get("ranking"):
+                    parts = _passages(path)
+                    if parts is None:
+                        continue
+                    vecs = _embed_file(emb, path, parts)
+                    if cache:
+                        cache.put(path, size, mtime, vecs)
+                    counts["read_now"] += 1
+                else:
+                    counts["cached"] += 1
+                if not vecs:
+                    counts["no_text"] += 1
+                    continue
+                best = max((_dot(q, v), i) for i, v in enumerate(vecs))
+                scored.append((best[0], best[1], path, size, mtime))
+
+            def rank_paragraphs(path, parts):
+                title = os.path.basename(path)
+                vecs = emb.embed([content.document_prompt(title, p) for p in parts[:200]])
+                return sorted(((_dot(q, _unit(v)), i) for i, v in enumerate(vecs)), reverse=True)
+
+            out["ranking"] = "meaning (EmbeddingGemma 2)"
+            results = _results(scored, args, rank_paragraphs)
+        finally:
+            emb.close()
+            if cache:
+                cache.close()
+    if results is None:
         out["ranking"] = "shared words"
         qg = _grams(args.query)
         words = [w.lower() for w in args.query.split() if len(w) > 1]
+        scored = []
         for path, size, mtime in files:
             if time.monotonic() - start > budget:
-                incomplete += 1
+                counts["incomplete"] += 1
                 continue
             parts = _passages(path)
-            read_now += 1
+            counts["read_now"] += 1
             if not parts:
-                no_text += 1 if parts == [] else 0
+                counts["no_text"] += 1 if parts == [] else 0
                 continue
-            sc = [(_word_score(qg, words, p), i) for i, p in enumerate(parts)]
-            best = max(sc)
+            chunks = _chunks(parts)
+            best = max((_word_score(qg, words, c), i) for i, c in enumerate(chunks))
             if best[0] > 0:
-                scored.append((best[0], path, size, mtime, sc))
+                scored.append((best[0], best[1], path, size, mtime))
+
+        def rank_paragraphs(path, parts):
+            return sorted(((_word_score(qg, words, p), i) for i, p in enumerate(parts)), reverse=True)
+
+        results = _results(scored, args, rank_paragraphs)
     if note:
         out["note"] = note
 
-    scored.sort(key=lambda s: s[0], reverse=True)
-    results = []
-    for score, path, size, mtime, per in scored[:args.limit]:
-        per = sorted(per, reverse=True)
-        item = {"path": path, "kind": "text", "score": round(score, 4), "loc": per[0][1] + 1, "size": size,
-                "modified": iso_time(mtime / 1e9)}
-        if not args.no_excerpt or args.passages:
-            parts = _passages(path) or []
-            if not args.no_excerpt and per[0][1] < len(parts):
-                item["excerpt"] = parts[per[0][1]][:400]
-            if args.passages:
-                item["passages"] = [{"rank": k + 1, "score": round(s, 4), "index": i,
-                                     **({} if args.no_excerpt or i >= len(parts) else {"text": parts[i]})}
-                                    for k, (s, i) in enumerate(per[:args.passages])]
-        results.append(item)
-    out.update(count=len(results), results=results, files_read_now=read_now, files_from_cache=cached,
-               seconds=round(time.monotonic() - start, 1))
-    if no_text:
-        out["files_without_text"] = no_text
+    out.update(count=len(results), results=results, files_read_now=counts["read_now"],
+               files_from_cache=counts["cached"], seconds=round(time.monotonic() - start, 1))
+    if counts["no_text"]:
+        out["files_without_text"] = counts["no_text"]
         out["hint_no_text"] = ("Some files have no text inside (scanned PDFs, empty files). To search those by what "
                                "they show, index the folder with DigUp: index DIR --media-only --estimate")
     if media:
         out["hint_media"] = ("Pictures, audio and video are not read here. If DigUp has indexed them: "
                              "search \"...\" --engine digup --root DIR")
-    if incomplete:
-        out.update(incomplete=incomplete, hint_incomplete=(
-            f"Time limit ({budget} s) reached: {incomplete} files not read yet. What was read is kept, so running "
-            "the same search again continues; or raise --max-seconds, or narrow --root."))
+    if counts["incomplete"]:
+        out.update(incomplete=counts["incomplete"], hint_incomplete=(
+            f"Time limit ({budget} s) reached: {counts['incomplete']} files not read yet. What was read is kept, so "
+            "running the same search again continues; or raise --max-seconds, or narrow --root."))
+    return out
+
+
+def _results(scored, args, rank_paragraphs):
+    """Top files with the best piece as excerpt; --passages K re-ranks the paragraphs of just these files."""
+    scored.sort(key=lambda s: s[0], reverse=True)
+    out = []
+    for score, piece, path, size, mtime in scored[:args.limit]:
+        item = {"path": path, "kind": "text", "score": round(score, 4), "loc": piece + 1, "size": size,
+                "modified": iso_time(mtime / 1e9)}
+        if not args.no_excerpt or args.passages:
+            parts = _passages(path) or []
+            chunks = _chunks(parts)
+            if not args.no_excerpt and piece < len(chunks):
+                item["excerpt"] = chunks[piece][:400]
+            if args.passages and parts:
+                ranked = rank_paragraphs(path, parts)[:args.passages]
+                item["passages"] = [{"rank": k + 1, "score": round(sc, 4), "index": i,
+                                     **({} if args.no_excerpt else {"text": parts[i]})}
+                                    for k, (sc, i) in enumerate(ranked)]
+                item["passages_total"] = len(parts)
+        out.append(item)
     return out
 
 
@@ -305,9 +333,10 @@ def cmd_estimate_text(args, roots):
             passages_total = 0
             for path, size, mtime in uncached:
                 parts = _passages(path) or []
-                passages_total += len(parts) + (1 if len(parts) > 1 else 0)
+                passages_total += len(_chunks(parts))
                 if len(sample) < 48:
-                    sample += [content.document_prompt(os.path.basename(path), p) for p in parts[:48 - len(sample)]]
+                    sample += [content.document_prompt(os.path.basename(path), c)
+                               for c in _chunks(parts)[:48 - len(sample)]]
                 if time.monotonic() - t0 > args.max_seconds:
                     break
             rate = None
@@ -318,8 +347,8 @@ def cmd_estimate_text(args, roots):
             emb.close()
             est = round(passages_total / rate) if rate else 0
             return {"ok": True, "engine": "text", "estimate": {
-                "files_with_text": len(files), "files_to_read": len(uncached), "paragraphs_to_read": passages_total,
-                "paragraphs_per_second": round(rate, 1) if rate else None, "seconds": est, "minutes": round(est / 60, 1),
+                "files_with_text": len(files), "files_to_read": len(uncached), "pieces_to_read": passages_total,
+                "pieces_per_second": round(rate, 1) if rate else None, "seconds": est, "minutes": round(est / 60, 1),
                 "pictures_audio_video": media, "not_readable_as_text": unread, "cloud_only_skipped": cloud,
                 "note": "Only the first search reads everything; later searches reuse the stored numbers."}}
     return {"ok": True, "engine": "text", "estimate": {
