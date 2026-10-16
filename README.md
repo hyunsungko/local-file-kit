@@ -31,8 +31,9 @@ Claude에게는 평소 말로 시키면 됩니다. 예: "작년에 받은 계약
 
 글자를 뽑을 수 있는 파일은 색인 없이 글자부터 읽습니다. DigUp 색인은 글자가 없는 것(사진·스크린샷·스캔 PDF·소리·영상)에 씁니다.
 
-- **이유**: DigUp 색인은 폴더의 모든 파일을 미리 처리합니다. PDF는 쪽마다 그림으로 바꿔 그림 모델을 거치므로, 큰 폴더는 첫 색인이 몇 시간에서 하루 넘게 걸리고 그래픽 카드도 오래 씁니다. 반면 글자로 된 문서는 글자만 읽어 문장 모델(EmbeddingGemma 2)에 넣으면 되어 훨씬 가볍습니다.
-- **글자 먼저 찾기** (`search "..." --root 폴더`): txt·md·docx·hwpx·pptx·xlsx·odt·html·rtf와 프로그램으로 만든 PDF에서 글자를 바로 읽어 문단을 뜻으로 비교합니다. 처음 찾을 때 읽은 결과(숫자만, 글자는 저장 안 함)를 남겨 두므로 다음 찾기부터는 바뀐 파일만 읽습니다. 큰 폴더는 `--estimate`로 걸릴 시간을 먼저 봅니다.
+- **이유**: DigUp 색인은 색인하겠다고 고른 폴더의 파일을 전부 미리 처리하고, 사진·스크린샷·영상까지 그림 모델로 처리합니다. 자료가 많으면 첫 색인이 몇 시간에서 하루 넘게 걸리고 그 동안 CPU·그래픽 카드를 씁니다. 글자 먼저 찾기는 찾을 때, 찾는 폴더의 글자 파일만 읽습니다.
+- **실측** (GitHub Actions 러너, 그래픽 카드 없음): 글자 문서만 놓고 보면 처음 읽는 시간은 두 방식이 비슷했고(짧은 글 300개: DigUp 색인 272초, 글자 먼저 첫 찾기 226초), 찾는 정확도도 같았습니다. 글자 먼저는 다음 찾기부터 1초 남짓입니다. 자세한 숫자는 [docs/SPECS.md](docs/SPECS.md)에 있습니다.
+- **글자 먼저 찾기** (`search "..." --root 폴더`): txt·md·docx·hwpx·pptx·xlsx·odt·html·rtf와 프로그램으로 만든 PDF에서 글자를 바로 읽어 뜻으로 비교합니다. 읽은 결과(숫자만, 글자는 저장 안 함)를 남겨 두므로 다음 찾기부터는 바뀐 파일만 읽습니다. 큰 폴더는 `--estimate`로 걸릴 시간을 먼저 봅니다.
 - **DigUp 색인** (`index 폴더 --media-only`): 문서 글자는 빼고 사진·PDF·소리·영상만 색인합니다. 역시 `--estimate`로 시간을 먼저 봅니다.
 - 옛 한글 파일(HWP)·DOC·XLS·PPT와 스캔 PDF는 글자로 읽지 못합니다. HWPX·DOCX로 저장하면 읽습니다.
 
@@ -134,11 +135,13 @@ photos, empty folders), ExifTool (photo metadata), 7-Zip (archives) and robocopy
 Python, or tells you what to install, when one is missing.
 
 **Text first.** `search "..." --root DIR` reads the text of txt, md, docx, hwpx, pptx, xlsx, odt, html, rtf and
-program-made PDFs directly and ranks paragraphs by meaning with EmbeddingGemma 2 (the model inside DigUp), with no
-index; paragraph vectors (numbers, not text) are cached so later searches only read changed files. DigUp's index,
-which renders PDF pages and photos through its image model and is much heavier, is meant for what has no text:
-photos, screenshots, scanned PDFs, audio and video (`index DIR --media-only`). Without DigUp, text search ranks by
-shared words. Old binary HWP/DOC/XLS/PPT and scanned PDFs cannot be read as text.
+program-made PDFs directly and ranks them by meaning with EmbeddingGemma 2 (the model inside DigUp), with no
+index; vectors (numbers, not text) are cached so later searches only read changed files. DigUp's index processes
+everything in the folders you give it, up front, photos and videos included (through its image model); keep it for
+what has no text: photos, screenshots, scanned PDFs, audio and video (`index DIR --media-only`). Measured on a CI
+runner, reading text documents the first time takes about as long either way and gives the same results; the saving
+is in not indexing everything ahead of time. Without DigUp, text search ranks by shared words. Old binary
+HWP/DOC/XLS/PPT and scanned PDFs cannot be read as text.
 
 **Install the skill**
 

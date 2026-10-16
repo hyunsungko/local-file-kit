@@ -6,9 +6,9 @@ All notable changes. Versions follow [Semantic Versioning](https://semver.org/);
 ## 0.2.0
 
 - Text first: `search "..." --root DIR` reads the text of the files in a folder (txt, md, docx, hwpx, pptx, xlsx, odt,
-  html, rtf and PDFs) without any index and ranks paragraphs by meaning with EmbeddingGemma 2 through `digup worker`,
-  or by shared words when DigUp is missing. Paragraph vectors are cached per file (numbers only), so later searches
-  read only changed files. `--estimate` shows the files and the expected time first; `--max-seconds` bounds a run.
+  html, rtf and PDFs) without any index and ranks pieces of up to ~1,200 characters by meaning with EmbeddingGemma 2
+  through `digup worker`, or by shared words when DigUp is missing. Vectors are cached per file (numbers only), so
+  later searches read only changed files. Same Korean results as the DigUp index on the CI runner. `--estimate` shows the files and the expected time first; `--max-seconds` bounds a run.
 - PDF text reading in plain Python (Flate streams, object streams, ToUnicode maps for Korean and other scripts,
   form XObjects). Scanned PDFs are reported as having no text.
 - `index --media-only` (and `--no-pdf`) leaves text documents out of the DigUp index, which is meant for photos,
