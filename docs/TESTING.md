@@ -97,3 +97,28 @@ DigUp 모델이 없을 때 `doctor`가 `download-model` 명령을 알려 주고 
 - Not tested: a fresh Windows 11 desktop VM, Windows 10, `setup` under a non-admin account (UAC prompts), macOS Trash
   and macOS tools, ARM64, DigUp on macOS/Linux, WizTree in CI, paths over 260 characters, cloud-only files,
   network/USB drives, Korean PDFs/HWP, accuracy on a large real index.
+
+## 0.3.0 검증 방법 (배포 전)
+
+`python -m unittest discover -s tests -p test_quick.py -v`는 가짜 파일·후보로 조사, 띄어쓰기, 대체어,
+부모 경로 가중치, 사본 묶기, 필터, 약한 결과의 1회 확장, 코드 검색·발췌 라우팅을 확인합니다.
+Everything이 설치된 Windows에서는 공백 인자와 실제 파일 검색도 검사합니다.
+
+`LFK_TEST_DIGUP=1`의 `test_lfk.DigUpTests.test_serve_answers_index_search`는 임시 색인과 격리된
+`LFK_DATA`로 상주 검색·직접 검색 결과 일치와 종료를 확인합니다. 실제 기본 색인을 덮어쓰지 않습니다.
+이 시험의 이번 CI 실행 결과는 아직 확인하지 않았습니다.
+
+정확도는 개발용 질문과 별개의 독립 정답지로 판단합니다. 정답 경로·질문·개인 PC 측정값은 저장소에
+넣지 않습니다. 상위1·상위5 적중과 없음 문항의 `weak` 표시를 구분하고, 빠른 단계·확장 단계·유휴 복귀
+시간을 따로 기록합니다. 단위 시험 통과만으로 검색 정확도나 새 에이전트의 스킬 선택을 입증하지 않습니다.
+기본 결과 개수와 발췌 유무, 대체어 사용 여부를 고정하고 비교합니다. 전체 확장 비율, 정답이 1위인 질문의
+확장 비율, 1위가 틀린 질문의 `weak` 비율을 함께 보고합니다. 없음 질문은 별도로 집계합니다.
+단계별 시간과 추가 상주 실행기의 메모리 비용도 측정하며, 속도 목표만으로 경고 기준을 낮추지 않습니다.
+상대 날짜 질문이 있으면 비교 기준일을 고정합니다. 자정을 넘긴 실행은 그대로 보존하되 날짜 변화와
+검색 변경의 영향을 분리해서 재측정합니다. 제품의 날짜 처리나 정답 경로를 측정에 맞춰 바꾸지 않습니다.
+
+확장 조건을 바꿀 때는 최종 순위뿐 아니라 **첫 단계 오답의 weak 비율**을 별도로 검증합니다.
+합성 시험은 완료된 이름 후보 재사용, 예산보다 느린 내용 검색 생략과 다른 색인 확장 유지, 이름·내용 결합 조건, 느린 ES 자식 프로세스의
+제한 시간 종료와 부분 후보 보존, 합치기까지 포함한 전체 확장 대기 상한, 늦게 끝난 작업의 반환값 불변,
+만료된 실행기 요청의 대기열 차단을 검사합니다. 시간 상한은 첫 단계나 모델을 처음 올리는 시간까지
+제한한다는 뜻이 아닙니다. 실제 속도·정확도 평가는 별도로 필요합니다.

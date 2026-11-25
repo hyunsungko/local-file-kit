@@ -26,6 +26,71 @@ Windows only (winget, else Chocolatey, which needs an administrator console; `LF
 DigUp is always `manual`.
 On macOS/Linux it lists the brew/apt commands; `--yes` is refused (`not_supported`). No installer: `no_installer`.
 
+## q QUERY
+Start here. File names and contents at once, merged. Options: `--kind screenshot,image,pdf,doc,audio,video,code`,
+`--ext a,b`, `--after/--before YYYY-MM-DD`, `--under DIR` (repeatable), `-n/--limit 10`, `--no-excerpt`,
+`--also WORDS` (repeatable translations or alternative spellings supplied by the caller).
+- Names: Everything, scored by how many of the question's words the name holds (fillers such as 파일·자료·찾아 and
+  verb forms such as 설명한 are left out; a trailing particle 을·를·에서… is cut), so extra words in the question
+  do not hide a name. Words that name a kind (pdf, 한글, 엑셀, 사진, 스캔, 영상…) favour that extension. Drives
+  Everything does not index (a cloud drive) come from a name list `serve` walks every 30 minutes.
+- Parent-folder words count less than filename words. Joined and spaced spellings are compared together.
+- Contents: the DigUp document and existing code indexes through `serve`, filtered by the same `--ext`/dates/`--under`.
+- Dates in the question: 오늘, 어제, 이번 주, 지난주 filter; 이번 달, 올해, 작년 only rank those files higher.
+- Copies (same name without " (1)" / " - 복사본", same size) are one line; the path shown is the one outside
+  backup, worktree and temp folders.
+Output: `results[{path, why: name|content|both, modified, size, kind, z, where, excerpt, name_words, copies,
+other_places[], path_words}]`, `searched{names, content}`, `name_words[]`, `dates`, `dates_preferred`, `notes[]`, `seconds`.
+`weak` means the leading evidence is weak, not that the file is absent. A weak first pass triggers exactly one
+larger pass (`expanded: true`); `timing{fast_seconds, expansion_seconds}` measures them separately.
+Confidence uses filename coverage and semantic evidence, not the rank-fusion score alone. It is a heuristic,
+not a correctness probability. `timing.stages.fast` and `.expansion` break down `names`, `other_names`, `semantic`,
+`code`, `merge`, and `excerpts` in seconds; `engine_ms` separates embedding and search inside DigUp.
+The retrieval stages overlap, so their durations must not be added to obtain elapsed time.
+Expansion reuses a nonempty name pool if its first query hit no quota or error (`names_reused: true`). A content
+search that already took longer than the remaining budget keeps its first-pass hits (`semantic_reused` or
+`code_reused`) with a note instead of repeating that search. Filename plus leading semantic evidence can avoid
+expansion; folder-only evidence needs stronger semantic support.
+Expansion waits at most 2.5 seconds, including merge and excerpt work. Retrieval gets up to 1.5 seconds,
+reserving one second for merging, excerpts and cleanup; it returns
+completed candidates with a timeout note; if merging itself cannot finish, it retains the first-pass results.
+This is not a whole-query cap: the first pass, startup and output serialization are outside it. Timed-out ES
+processes are killed. Expired queued helper requests are discarded; a helper search already executing may
+finish in the background. Each caller process permits only one unfinished expansion worker.
+`where`: `p. N` (PDF page), `part N` (a document's chunk), `m:ss` (audio/video), `line N–M` (code).
+
+## serve
+Keeps `digup search-service` running for the DigUp app's index (or `--index DIR`) with the query encoder on the CPU,
+answering on a named pipe (Windows) or a Unix socket in the data folder, with a key in `serve.json` there. Nothing
+listens on the network. `--idle 604800`: seconds without a search before the vectors are let go (the next search loads
+them again). `--release-at 80` (Windows, 0 = off): when the whole computer's memory use reaches this percent, the
+helpers are stopped too (checked every 15 s; the next search starts them again; each release is logged in
+`memory-release.log`). `--reload-at 70` (0 = off): after such a release, the main helper loads its vectors again once
+memory use has stayed under this percent for a minute and ten minutes have passed, but only while the memory it held
+before still leaves use 5 points under `--release-at`; the code helper waits for the next code search. `--status` (`running, pid, vectors_loaded, encoder, searches, names{drives, entries, walked}`),
+`--stop`, `--autostart on|off` (Windows: task `LocalFileKit-Search` at logon, no window).
+`q` and `search` start it themselves when it is not running (not with `--index`; `LFK_NO_AUTOSERVE=1` turns that
+off). `search` output says `via: service|cli`.
+For the default index, the service reuses `codeFolders` and `codeSkipped` from the app's settings when a code
+database already exists. It does not rebuild the index or edit settings. Custom indexes are isolated from those
+app folders. Status also includes `code_enabled` and `code_vectors_loaded`. Automatic code-folder discovery
+requires the app's JSON settings; platforms using a different settings format may have no code connection.
+Normal and code searches use separate helpers in parallel. The code helper leaves its main-index vectors unloaded;
+it has its own idle encoder, reported as `code_encoder`. This trades some additional RAM for lower query latency.
+Drive-name normalization is cached until the next name-list refresh.
+
+## refresh
+Indexes what changed in the folders chosen in the DigUp app (its `settings.json`), without the app: the app's own
+helper (`digup index-service --backfill`, same folders, skips and code folders), below-normal priority, then
+`serve` reloads. Skipped while the DigUp app runs (it does this itself); stops if the app starts. `--max-hours 6`,
+`--last` (what the last run did), `--autostart on|off [--at 03:30]` (Windows: daily task `LocalFileKit-IndexRefresh`).
+Output: `minutes, syncs[{code, added, changed, moved, removed, unchanged, ms}], files, states, rest, errors, missing,
+service_reloaded`.
+The installed DigUp helper determines which extensions can be indexed. Markdown documents in code folders
+use the normal content index when those folders are selected there. MDX needs a helper that recognizes `.mdx`
+as a document; scheduling alone cannot add an unsupported type. A helper update does not require rebuilding
+unchanged files when its model and indexing settings remain compatible.
+
 ## find QUERY
 Options: `--root DIR` (repeatable), `--ext a,b`, `--type file|folder`, `--min-size`, `--max-size` (500, 10k, 5MB, 1.5GB),
 `--after/--before YYYY-MM-DD` (modified), `--regex`, `--case`, `--sort name|path|size|modified`, `--limit 100`,

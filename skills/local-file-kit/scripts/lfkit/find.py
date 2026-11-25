@@ -61,7 +61,7 @@ def _es_query(args, f):
     return parts
 
 
-def _es_run(es, root, words, limit, sort):
+def _es_run(es, root, words, limit, sort, timeout=120):
     out = temp_path(".json")
     cmd = [es]
     if root:
@@ -71,7 +71,7 @@ def _es_run(es, root, words, limit, sort):
     if sort:
         cmd += ["-sort", sort]
     try:
-        rc, _, err = run(cmd, timeout=120)
+        rc, _, err = run(cmd, timeout=timeout)
         if rc == 8:
             raise LfkError("everything_not_running", "Everything is installed but not running; start Everything "
                            "(it must stay running in the background) or use --engine walk with --root", exit_code=3)

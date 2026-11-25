@@ -9,6 +9,7 @@
 
 | 하고 싶은 일 | 명령 | 쓰는 도구 | 도구가 없으면 |
 |---|---|---|---|
+| PC 전체에서 이름·내용을 한 번에 찾기 | `q "찾는 말"` | Everything + 상주 DigUp 검색 | 가능한 쪽으로 찾고 누락 범위를 알림 |
 | 이름 일부로 파일 찾기 | `find` | Everything (es.exe) | 지정한 폴더를 파이썬으로 훑음(느림) |
 | 폴더 안 문서를 내용·뜻으로 찾기 (한국어·영어) | `search --root 폴더` | 파일 글자를 바로 읽음 + EmbeddingGemma 2 (DigUp 안의 모델), 색인 없음 | 같은 낱말로 찾음 |
 | 사진·스크린샷·스캔 PDF를 뜻으로 찾기 | `index --media-only`, `search` | DigUp 색인 | 쓸 수 없음(설치 안내) |
@@ -27,7 +28,22 @@
 
 Claude에게는 평소 말로 시키면 됩니다. 예: "작년에 받은 계약서 어디 있지?", "D 드라이브 뭐가 제일 큰지 봐 줘", "사진 폴더 중복 정리해 줘", "다운로드 폴더 종류별로 정리해 줘".
 
-## 내용 찾기는 글자 먼저
+## 먼저 한 번에 찾기
+
+`python "<스킬 폴더>/scripts/lfk.py" q "작년에 받은 계약서"`로 시작합니다. 이름과 이미 색인된 내용을
+함께 찾아 사본을 묶고, 내용이 맞으면 발췌와 위치를 보여 줍니다. `--no-excerpt`로 발췌를 뺄 수 있습니다.
+영어 이름일 가능성이 있으면 `--also "lease agreement"`처럼 대체 표현을 함께 줍니다(여러 번 가능).
+파일 이름과 부모 폴더의 낱말, 띄어쓰기 차이를 반영하고, 연결된 코드 색인도 검색합니다.
+
+약한 결과는 후보를 한 번 넓혀 다시 찾습니다. 그래도 `weak: true`이면 놓쳤을 가능성을 알립니다.
+파일이 없다는 판정은 아닙니다. `timing`에서 기본 검색과 확장 검색의 시간을 구분할 수 있습니다.
+확장은 최대 2.5초를 기다립니다. 시간이 부족하면 완료된 결과를 반환하고 `notes`에 표시합니다.
+
+`serve`는 검색기와 CPU 질의 인코더를 메모리에 유지합니다. `serve --status`로 확인하고
+`serve --autostart on`으로 Windows 로그온 실행을 등록합니다. `refresh`는 DigUp 앱에서 고른 폴더의
+변경분을 반영하며, `refresh --autostart on`으로 야간 작업을 등록합니다. 최초 색인은 별도입니다.
+
+## 색인 밖 폴더의 내용 찾기
 
 글자를 뽑을 수 있는 파일은 색인 없이 글자부터 읽습니다. DigUp 색인은 글자가 없는 것(사진·스크린샷·스캔 PDF·소리·영상)에 씁니다.
 
@@ -133,6 +149,14 @@ one JSON command line, `lfk.py`, in front of free tools you may already have —
 EmbeddingGemma 2 (contents and meaning, Korean and English), WizTree (disk usage), Czkawka (duplicates, look-alike
 photos, empty folders), ExifTool (photo metadata), 7-Zip (archives) and robocopy (copies) — and falls back to plain
 Python, or tells you what to install, when one is missing.
+
+**Start with `q "what you want"`.** It merges names, indexed contents and an existing code index, folds copies,
+and includes passages and locations (`--no-excerpt` omits passages). Add caller-supplied translations with
+repeatable `--also "alternate wording"`. Parent-folder words and spacing variants help names match.
+Weak evidence triggers one expanded pass; `weak: true` means it may have missed the answer. The two timings
+are reported separately. Expansion waits at most 2.5 seconds, returning completed results with a note on timeout.
+`serve` keeps search ready; `refresh` updates changed files in the app's chosen folders.
+Both offer Windows `--autostart on|off`. A first search or one after idle can take longer while models reload.
 
 **Text first.** `search "..." --root DIR` reads the text of txt, md, docx, hwpx, pptx, xlsx, odt, html, rtf and
 program-made PDFs directly and ranks them by meaning with EmbeddingGemma 2 (the model inside DigUp), with no

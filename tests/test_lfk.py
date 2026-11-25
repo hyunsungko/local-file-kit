@@ -83,6 +83,24 @@ class NoToolsTests(Corpus):
         self.assertFalse(d["features"]["search"]["available"])
         self.assertIn("김 철수", d["config_file"])
 
+    def test_serve_without_digup(self):
+        rc, d = self.run_lfk("serve", "--status")
+        self.assertEqual((rc, d["running"]), (0, False))
+        os.makedirs(self.env["LFK_DATA"], exist_ok=True)
+        stale = os.path.join(self.env["LFK_DATA"], "serve.json")
+        address = r"\\.\pipe\local-file-kit-gone" if IS_WIN else os.path.join(self.tmp, "gone.sock")
+        with open(stale, "w", encoding="utf-8") as f:
+            json.dump({"address": address, "key": "00" * 32, "pid": 1, "started": "", "index": None, "idle": 1800}, f)
+        try:
+            rc, d = self.run_lfk("search", "김치찌개")  # a stale serve.json: falls back to digup search
+            self.assertEqual((rc, d["error"]), (3, "tool_missing"))
+            rc, d = self.run_lfk("serve", "--status")
+            self.assertFalse(d["running"])
+        finally:
+            os.unlink(stale)
+        rc, d = self.run_lfk("serve")
+        self.assertEqual((rc, d["error"]), (3, "tool_missing"))
+
     def test_find_without_everything_needs_root(self):
         rc, d = self.run_lfk("find", "김치")
         self.assertEqual(rc, 2)
@@ -421,6 +439,35 @@ class DigUpTests(Corpus):
         self.assertEqual(d["files_read_now"], 0)  # everything came from the cache
         rc, d = lfk("search", "x", "--root", self.corpus, "--estimate", env=env)
         self.assertEqual(d["estimate"]["files_to_read"], 0)
+
+    def test_serve_answers_index_search(self):
+        idx = os.path.join(self.tmp, "digup index serve")
+        rc, d = lfk("index", self.corpus, "--index", idx)
+        self.assertEqual(rc, 0, d)
+        env = dict(os.environ, LFK_DATA=os.path.join(self.tmp, "serve data"), LFK_NO_AUTOSERVE="1")
+        rc, cli = lfk("search", "찌개 끓이는 법", "--index", idx, "-n", "3", env=env)
+        self.assertEqual((rc, cli["via"]), (0, "cli"), cli)
+        server = subprocess.Popen([sys.executable, LFK, "serve", "--index", idx], env=env, stdout=subprocess.DEVNULL)
+        try:
+            for _ in range(120):
+                rc, st = lfk("serve", "--status", env=env)
+                if st.get("running"):
+                    break
+                time.sleep(1)
+            self.assertTrue(st["running"], st)
+            rc, d = lfk("search", "찌개 끓이는 법", "--index", idx, "-n", "3", env=env)
+            self.assertEqual((rc, d["via"]), (0, "service"), d)
+            self.assertEqual([r["path"] for r in d["results"]], [r["path"] for r in cli["results"]])
+            rc, d = lfk("search", "찌개 끓이는 법", "-n", "3", env=env)  # another index: not the service's
+            self.assertNotEqual(d.get("via"), "service")
+            rc, d = lfk("serve", "--stop", env=env)
+            self.assertTrue(d["stopped"])
+            server.wait(timeout=60)
+        finally:
+            if server.poll() is None:
+                server.kill()
+        rc, d = lfk("search", "찌개 끓이는 법", "--index", idx, "-n", "3", env=env)
+        self.assertEqual(d["via"], "cli")
 
     def test_index_media_only_leaves_documents_out(self):
         idx = os.path.join(self.tmp, "digup index media")

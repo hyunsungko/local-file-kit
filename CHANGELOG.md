@@ -3,6 +3,31 @@
 All notable changes. Versions follow [Semantic Versioning](https://semver.org/); the version lives in
 `.claude-plugin/plugin.json` and `skills/local-file-kit/scripts/lfkit/__init__.py` (keep them equal).
 
+## 0.3.0
+
+- `q` searches names and indexed contents together, folds copies, applies shared filters and returns passages
+  and locations. Parent paths, Korean particles, spacing variants and repeatable caller-supplied `--also` help retrieval.
+- Weak first results trigger one expanded search; JSON reports `weak`, `expanded` and separate stage timings.
+  Confidence checks filename coverage and semantic evidence separately from ranking. Detailed timings show
+  names, meaning, code, excerpts and merging, with overlapping retrieval stages.
+- Combined name/content evidence can avoid expansion. Complete name pools are reused; content searches that
+  already exceeded the remaining expansion budget retain their first-pass hits with a note. Expansion has a
+  2.5-second budget, retains completed results and reports timeouts in `notes`.
+- `serve` keeps the DigUp searcher ready, reuses existing app code-folder selections and releases idle vectors.
+  `q` merges code hits and fetches their text from the correct index. Windows logon registration is optional.
+  Normal and code searches run in parallel helpers; drive-name normalization is reused between queries.
+- `serve --release-at 80` (Windows): when the computer's memory use reaches this percent, the helpers let their
+  vectors go; `--reload-at 70` loads the main helper again once use stays lower and the memory it held before still
+  fits 5 points under the release level, so it is not let go again right after. Only the main helper is reloaded
+  (a prewarm of the code helper would load the main vectors a second time). Releases and reloads go to
+  `memory-release.log`.
+- `refresh` updates changed files using the app's chosen folders and exclusions, then reloads the service.
+  Optional Windows daily scheduling; skips while the app is running (a skipped run keeps the last report for `--last`).
+  It reports an error when the helper ends before reporting anything, and stops it if it ignores the time limit.
+- `status` reads DigUp's numbers with thousands separators (it showed only the kinds under 1,000 files).
+- `q`: a slow passage lookup no longer fails the whole search; copy-folder words match whole folder names only.
+- Synthetic regression tests cover aliases, spacing, parent evidence, copies, filters, expansion and code routing.
+
 ## 0.2.0
 
 - Text first: `search "..." --root DIR` reads the text of the files in a folder (txt, md, docx, hwpx, pptx, xlsx, odt,

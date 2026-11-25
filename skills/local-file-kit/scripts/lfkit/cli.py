@@ -6,11 +6,13 @@ from . import __version__
 from .util import LfkError, emit, parse_size, setup_stdio
 
 EPILOG = """examples:
+  lfk.py q "작년에 쓴 전세 계약서"           (start here: names and contents at once)
   lfk.py doctor
   lfk.py setup                           (list missing tools)  ... --all --yes (install them)
   lfk.py find "budget 2024" --ext xlsx,pdf --limit 20
   lfk.py find report --root "D:\\Work" --engine walk
   lfk.py search "tenant contract renewal terms" --kind doc,pdf --passages 3
+  lfk.py serve --autostart on            (Windows: keep index search ready from logon)
   lfk.py size "D:\\Photos" --top 15
   lfk.py dupes "D:\\Photos" --min-size 100k
   lfk.py plan "C:\\Users\\me\\Downloads" --to "D:\\Sorted" --by kind
@@ -65,6 +67,19 @@ def build_parser():
     s.add_argument("--yes", action="store_true", help="really install (after the user agreed to the list)")
     s.add_argument("--max-seconds", type=int, default=1800, help="time limit per installer")
 
+    s = cmd("q", "start here: look for anything on this computer by name and by what it says, at once "
+            "(Everything + the DigUp index); copies folded, passages shown")
+    s.add_argument("query", help="what you are looking for, in your own words ('오늘', '이번 주', '작년' set the dates)")
+    s.add_argument("--kind", help="screenshot,image,pdf,doc,audio,video,code")
+    s.add_argument("--also", action="append", metavar="WORDS",
+                   help="another spelling or translation supplied by the caller (repeatable)")
+    s.add_argument("--ext", help="extensions, comma separated: pdf,hwp")
+    s.add_argument("--after", metavar="DATE", help="modified on or after YYYY-MM-DD")
+    s.add_argument("--before", metavar="DATE", help="modified before YYYY-MM-DD")
+    s.add_argument("--under", action="append", metavar="DIR", help="only inside this folder (repeatable)")
+    s.add_argument("--limit", "-n", type=int, default=10)
+    s.add_argument("--no-excerpt", action="store_true", help="leave passages out of the output (privacy)")
+
     s = cmd("find", "find files and folders by name (Everything; folder walk without it)")
     s.add_argument("query", nargs="?", default="", help="words that must all appear in the name (* and ? wildcards; "
                    "a word with \\ matches the full path). With --engine everything, full Everything syntax works")
@@ -118,6 +133,24 @@ def build_parser():
 
     s = cmd("status", "what the DigUp index holds")
     s.add_argument("--index", metavar="DIR")
+
+    s = cmd("refresh", "index what changed in the folders chosen in the DigUp app, without the app (then 'serve' reloads)")
+    s.add_argument("--last", action="store_true", help="what the last refresh did")
+    s.add_argument("--autostart", choices=["on", "off"], help="Windows: run it every day (a task named LocalFileKit-IndexRefresh)")
+    s.add_argument("--at", default="03:30", help="time of day for --autostart on (default 03:30)")
+    s.add_argument("--max-hours", type=int, default=6, help="stop after this long; the rest is done next time")
+
+    s = cmd("serve", "keep DigUp's search ready so an index search takes about a second (runs until stopped)")
+    s.add_argument("--status", action="store_true", help="is it running, are the vectors loaded")
+    s.add_argument("--stop", action="store_true")
+    s.add_argument("--autostart", choices=["on", "off"], help="Windows: start it at logon (a task named LocalFileKit-Search)")
+    s.add_argument("--idle", type=int, default=604800,
+                   help="seconds without a search before the vectors are let go (default 604800, 7 days); the next search loads them again")
+    s.add_argument("--release-at", type=int, default=80, metavar="PERCENT",
+                   help="Windows: let the vectors go when the computer's memory use reaches this percent (default 80, 0 = off)")
+    s.add_argument("--reload-at", type=int, default=70, metavar="PERCENT",
+                   help="Windows: after such a release, load the vectors again once memory use stays under this percent (default 70, 0 = off)")
+    s.add_argument("--index", metavar="DIR", help="a separate DigUp index folder")
 
     s = cmd("size", "what takes up space in a folder or drive (WizTree; folder walk without it)")
     s.add_argument("path")
@@ -206,10 +239,10 @@ def build_parser():
 
 
 def dispatch(args):
-    from . import archive, content, copyfiles, doctor, dupes, exif, find, organize, setup, size
+    from . import archive, content, copyfiles, doctor, dupes, exif, find, organize, quick, refresh, serve, setup, size
     table = {
-        "doctor": doctor.cmd_doctor, "setup": setup.cmd_setup, "find": find.cmd_find, "search": content.cmd_search, "index": content.cmd_index,
-        "status": content.cmd_status, "size": size.cmd_size, "dupes": dupes.cmd_dupes, "similar": dupes.cmd_similar,
+        "doctor": doctor.cmd_doctor, "setup": setup.cmd_setup, "find": find.cmd_find, "q": quick.cmd_q, "search": content.cmd_search, "index": content.cmd_index,
+        "status": content.cmd_status, "serve": serve.cmd_serve, "refresh": refresh.cmd_refresh, "size": size.cmd_size, "dupes": dupes.cmd_dupes, "similar": dupes.cmd_similar,
         "empty": dupes.cmd_empty, "exif": exif.cmd_exif, "archive": archive.cmd_archive, "copy": copyfiles.cmd_copy,
         "plan": organize.cmd_plan, "move": organize.cmd_move, "trash": organize.cmd_trash, "undo": organize.cmd_undo,
     }

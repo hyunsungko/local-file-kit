@@ -116,23 +116,15 @@ def cmd_search(args):
     if args.estimate:
         raise LfkError("bad_argument", "--estimate is for text search (--root); for the DigUp index use "
                        "index DIR --estimate", exit_code=2)
-    digup = tools.require("digup")
-    n = args.limit * (5 if roots else 1)
-    cmd = [digup, "search", *args.query.split(), "--json", "-n", str(n)] + _index_args(args)
     if args.kind:
         bad = [k for k in args.kind.split(",") if k not in KINDS]
         if bad:
             raise LfkError("bad_argument", f"unknown kind(s) {bad}; use {','.join(KINDS)}", exit_code=2)
-        cmd += ["--kind", args.kind]
-    if args.zgate is not None:
-        cmd += ["--zgate", str(args.zgate)]
-    rc, out, err = run(cmd, timeout=600, env=_env(args))
-    if rc != 0:
-        _fail("search", rc, err, digup)
-    try:
-        rows = json.loads(out) if out.strip() else []
-    except ValueError:
-        raise LfkError("tool_failed", "digup search did not return JSON", stdout=out[:500])
+    rows = _ask_service(args, roots)
+    via = "service"
+    if rows is None:
+        via = "cli"
+        rows = _search_cli(args, roots)
     results = []
     for r in rows:
         path = r.get("path", "").replace("/", os.sep) if IS_WIN else r.get("path", "")
@@ -146,13 +138,45 @@ def cmd_search(args):
         results.append(item)
         if len(results) >= args.limit:
             break
-    out_obj = {"ok": True, "engine": "digup", "query": args.query, "count": len(results), "results": results}
+    out_obj = {"ok": True, "engine": "digup", "via": via, "query": args.query, "count": len(results),
+               "results": results}
     if not results:
         out_obj["hint"] = ("Nothing stood out. DigUp hides weak matches (z below 2.0): try other words, "
                            "--zgate 0 to see everything ranked, or check 'status' that the folder is indexed.")
     if args.passages and results:
-        _add_passages(digup, args, results)
+        _add_passages(tools.require("digup"), args, results)
     return out_obj
+
+
+def _ask_service(args, roots):
+    """Hits from 'lfk serve' (about a second; started here when it is not running), or None to run digup search."""
+    from . import serve
+    if args.zgate is not None or args.cpu:  # the service always uses z 2.0 and its own device
+        return None
+    request = {"op": "search", "q": args.query, "limit": args.limit}
+    if args.kind:
+        request["kinds"] = args.kind.split(",")
+    if roots:
+        request["under"] = roots
+    reply = serve.ask_index(request, abspath(args.index) if args.index else None)
+    return reply["hits"] if reply and "hits" in reply else None
+
+
+def _search_cli(args, roots):
+    digup = tools.require("digup")
+    n = args.limit * (5 if roots else 1)
+    cmd = [digup, "search", *args.query.split(), "--json", "-n", str(n)] + _index_args(args)
+    if args.kind:
+        cmd += ["--kind", args.kind]
+    if args.zgate is not None:
+        cmd += ["--zgate", str(args.zgate)]
+    rc, out, err = run(cmd, timeout=600, env=_env(args))
+    if rc != 0:
+        _fail("search", rc, err, digup)
+    try:
+        return json.loads(out) if out.strip() else []
+    except ValueError:
+        raise LfkError("tool_failed", "digup search did not return JSON", stdout=out[:500])
 
 
 def _fail(what, rc, err, digup):
@@ -339,12 +363,12 @@ def cmd_status(args):
         m = re.match(r"^index:\s*(.+)$", line)
         if m:
             status["index"] = m.group(1).strip()
-        m = re.match(r"^vectors:\s*(\d+)", line)
+        m = re.match(r"^vectors:\s*([\d,]+)", line)  # digup writes 1,234,567
         if m:
-            status["vectors"] = int(m.group(1))
-        m = re.match(r"^\s+(screenshot|image|pdf|doc|audio|video|code)\s+(\d+)\s+(.*)$", line)
+            status["vectors"] = int(m.group(1).replace(",", ""))
+        m = re.match(r"^\s+(screenshot|image|pdf|doc|audio|video|code)\s+([\d,]+)\s+(.*)$", line)
         if m:
-            status["kinds"][m.group(1)] = {"files": int(m.group(2)), "state": m.group(3).strip()}
+            status["kinds"][m.group(1)] = {"files": int(m.group(2).replace(",", "")), "state": m.group(3).strip()}
         m = re.match(r"^size:\s*(.+)$", line)
         if m:
             status["size"] = m.group(1).strip()
