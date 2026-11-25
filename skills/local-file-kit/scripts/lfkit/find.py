@@ -64,8 +64,10 @@ def _es_query(args, f):
 def _es_run(es, root, words, limit, sort, timeout=120):
     out = temp_path(".json")
     cmd = [es]
+    # Everything knows only the final path: a short 8.3 name, a junction or a symlink in `root` matches nothing.
+    real = os.path.realpath(root) if root else None
     if root:
-        cmd += ["-path", root]
+        cmd += ["-path", real]
     cmd += list(words)
     cmd += ["-size", "-dm", "-n", str(limit), "-export-json", out]
     if sort:
@@ -90,11 +92,21 @@ def _es_run(es, root, words, limit, sort, timeout=120):
         p = r.get("filename", "")
         is_dir = p.endswith("\\") or p.endswith("/")
         p = p.rstrip("\\/") if is_dir else p
+        if real and real != root:
+            p = _as_given(p, real, root)
         mtime_iso = filetime_to_iso(r.get("date_modified"))
         items.append({"path": p, "name": os.path.basename(p), "is_dir": is_dir,
                       "size": r.get("size"),
                       "modified": mtime_iso, "_mtime": (int(r["date_modified"]) / 1e7 - 11644473600) if r.get("date_modified") else None})
     return items
+
+
+def _as_given(path, real, given):
+    """`path` under the resolved folder `real`, spelled under the folder the caller gave."""
+    r = real.rstrip("\\/")
+    if os.path.normcase(path[:len(r)]) == os.path.normcase(r) and path[len(r):len(r) + 1] in ("", "\\", "/"):
+        return given.rstrip("\\/") + path[len(r):]
+    return path
 
 
 def _root_indexed(es, root):

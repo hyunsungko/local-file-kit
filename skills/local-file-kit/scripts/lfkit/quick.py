@@ -475,6 +475,8 @@ def _query_once(args, expanded=False, prior=None, deadline=None):
     for u in unders:
         if not os.path.isdir(u):
             raise LfkError("not_found", f"--under is not a folder: {u}", exit_code=2)
+    # A path may come spelled under the folder as given (a short name, a link) or as resolved: both count as inside.
+    inside = list(dict.fromkeys([abspath(u) for u in (args.under or [])] + unders))
     filtered = bool(exts or after or before)
 
     side = {"expanded": expanded, "profile": {}}
@@ -552,7 +554,7 @@ def _query_once(args, expanded=False, prior=None, deadline=None):
         if key in seen_names:
             continue
         seen_names.add(key)
-        if unders and not any(_under(path, u) for u in unders):
+        if inside and not any(_under(path, u) for u in inside):
             continue
         name = os.path.basename(path).lower()
         ext = os.path.splitext(name)[1].lstrip(".")
@@ -586,7 +588,7 @@ def _query_once(args, expanded=False, prior=None, deadline=None):
         path = _norm(h.get("path") or "")
         if not path:
             continue
-        if unders and not any(_under(path, u) for u in unders):
+        if inside and not any(_under(path, u) for u in inside):
             continue
         mtime = h.get("modified")
         ext = os.path.splitext(path)[1].lstrip(".").lower()

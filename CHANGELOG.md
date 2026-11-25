@@ -26,6 +26,9 @@ All notable changes. Versions follow [Semantic Versioning](https://semver.org/);
   It reports an error when the helper ends before reporting anything, and stops it if it ignores the time limit.
 - `status` reads DigUp's numbers with thousands separators (it showed only the kinds under 1,000 files).
 - `q`: a slow passage lookup no longer fails the whole search; copy-folder words match whole folder names only.
+  `--under` keeps results spelled under the folder as given or as resolved (a short 8.3 name, a symlink such as
+  macOS `/var`); before, only the resolved spelling counted and such results were dropped. Everything is always
+  given the resolved folder (it matches nothing under a short name or a link).
 - Synthetic regression tests cover aliases, spacing, parent evidence, copies, filters, expansion and code routing.
 
 ## 0.2.0

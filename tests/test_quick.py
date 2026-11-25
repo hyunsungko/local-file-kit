@@ -298,6 +298,22 @@ with patch.object(quick, '_query_once', side_effect=stage):
         self.assertNotIn('excerpt', out['results'][0])
         self.assertTrue(any('did not answer in time' in n for n in out['notes']))
 
+    def test_everything_gets_the_resolved_folder_and_answers_as_given(self):
+        find = quick.find
+        seen = {}
+
+        def es(cmd, timeout=120):
+            seen['cmd'] = cmd
+            rows = [{'filename': 'C:\\Real\\Folder\\a.txt'}, {'filename': 'C:\\Real\\Folder2\\b.txt'}]
+            Path(cmd[cmd.index('-export-json') + 1]).write_text(json.dumps(rows), encoding='utf-8')
+            return 0, '', ''
+
+        with patch.object(find, 'run', side_effect=es), \
+                patch.object(find.os.path, 'realpath', return_value='C:\\Real\\Folder'):
+            rows = find._es_run('es', 'C:\\SHORT~1', ['a'], 10, None)
+        self.assertEqual(seen['cmd'][seen['cmd'].index('-path') + 1], 'C:\\Real\\Folder')  # short names match nothing
+        self.assertEqual([r['path'] for r in rows], ['C:\\SHORT~1\\a.txt', 'C:\\Real\\Folder2\\b.txt'])
+
     def test_refresh_daily_task_is_built(self):
         from lfkit import refresh
         with patch.object(refresh, 'IS_WIN', True), patch.object(serve, '_ps', return_value=(0, '', '')) as ps:
